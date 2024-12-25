@@ -16,11 +16,134 @@
 
 #define PORT 8080;
 
+#define MAX_CLIENTS 5
+#define BUFFER_SIZE 1024
+#define ACCOUNT_FILE "account.txt"
+
 // Waiting player conditional variable
 pthread_cond_t player_to_join;
 pthread_mutex_t general_mutex;
-
+#define MAX_PLAYERS 100
 bool is_diagonal(int, int);
+
+typedef struct {
+    int socket;
+    struct sockaddr_in address;
+    int index;
+    char username[50];
+    int elo;
+    int is_waiting;
+    int is_online;
+    int played;
+} client_info;
+
+client_info clients[MAX_CLIENTS];
+
+int get_user_elo(const char *username) {
+    FILE *file = fopen("elo_ratings.txt", "r");
+    if (!file) {
+        perror("Failed to open Elo ratings file");
+        return 1000; // Default Elo if file is not accessible
+    }
+
+    char line[256];
+    char stored_username[32];
+    int stored_elo;
+
+    while (fgets(line, sizeof(line), file)) {
+        if (sscanf(line, "%s %d", stored_username, &stored_elo) == 2) {
+            if (strcmp(username, stored_username) == 0) {
+                fclose(file);
+                return stored_elo; // Return Elo if username matches
+            }
+        }
+    }
+
+    fclose(file);
+    return 1000; // Default Elo if user not found
+}
+
+int validate_login(const char *username, const char *password) {
+    FILE *file = fopen(ACCOUNT_FILE, "r");
+    if (!file) return 0;
+
+    char file_username[50], file_password[50];
+    while (fscanf(file, "%s %s", file_username, file_password) != EOF) {
+        if (strcmp(username, file_username) == 0 && strcmp(password, file_password) == 0) {
+            fclose(file);
+            return 1;
+        }
+    }
+    fclose(file);
+    return 0;
+}
+
+int register_user(const char *username, const char *password) {
+    FILE *file = fopen(ACCOUNT_FILE, "a+");
+    if (!file) return 0;
+
+    char file_username[50];
+    while (fscanf(file, "%s", file_username) != EOF) {
+        if (strcmp(username, file_username) == 0) {
+            fclose(file);
+            return 0;
+        }
+    }
+
+    fprintf(file, "%s %s\n", username, password);
+    fclose(file);
+    return 1;
+}
+
+
+
+// int handle_client(client_info *client) {
+//     char buffer[1024], response[1024];
+//     int bytes_received;
+
+//     while (1) {
+//         bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
+//         if (bytes_received <= 0) {
+//             return -1; // Client disconnected
+//         }
+
+//         buffer[bytes_received] = '\0';
+//         char *command = strtok(buffer, " ");
+//         char *username = strtok(NULL, " ");
+//         char *password = strtok(NULL, " ");
+
+//         if (!command || !username || !password) {
+//             snprintf(response, sizeof(response), "Invalid command. Use REGISTER <username> <password> or LOGIN <username> <password>.\n");
+//             send(client->socket, response, strlen(response), 0);
+//             continue;
+//         }
+
+//         if (strcmp(command, "REGISTER") == 0) {
+//             if (register_user(username, password)) {
+//                 snprintf(response, sizeof(response), "Registration successful.\n");
+//                 strncpy(client->username, username, sizeof(client->username));
+//                 send(client->socket, response, strlen(response), 0);
+//                 return 0; // Authenticated
+//             } else {
+//                 snprintf(response, sizeof(response), "Registration failed. Username already exists.\n");
+//             }
+//         } else if (strcmp(command, "LOGIN") == 0) {
+//             if (validate_login(username, password)) {
+//                 snprintf(response, sizeof(response), "Login successful.\n");
+//                 strncpy(client->username, username, sizeof(client->username));
+//                 send(client->socket, response, strlen(response), 0);
+//                 return 0; // Authenticated
+//             } else {
+//                 snprintf(response, sizeof(response), "Login failed. Invalid credentials.\n");
+//             }
+//         } else {
+//             snprintf(response, sizeof(response), "Unknown command.\n");
+//         }
+
+//         send(client->socket, response, strlen(response), 0);
+//     }
+// }
+// Waiting player conditional variable
 
 // Match player
 int challenging_player = 0;
@@ -105,15 +228,44 @@ bool is_syntax_valid(int player, char * move) {
   return true;
 }
 
-void broadcast(wchar_t ** board, char * one_dimension_board, int player_one, int player_two) {
+char *invert_board(char *board, int size) {
+    // Allocate memory for the inverted board
+    char *inverted_board = (char *)malloc(size * sizeof(char));
+    
+    // Invert the board by reversing the order of elements
+    for (int i = 0; i < 64; i++) {
+        inverted_board[i] = board[size - 1 - i];
+    }
 
-  to_one_dimension_char(board, one_dimension_board);
-
-  printf("\tSending board to %d and %d size(%lu)\n", player_one, player_two, sizeof(one_dimension_board));
-  send(player_one, one_dimension_board, 64, 0);
-  send(player_two, one_dimension_board, 64, 0);
-  printf("\tSent board...\n");
+    return inverted_board;
 }
+
+void broadcast(wchar_t **board, char *one_dimension_board, int player_one, int player_two) {
+    // Convert the 2D board to 1D representation for transmission
+    to_one_dimension_char(board, one_dimension_board);
+    
+    // Send the board to Player One (no inversion needed)
+    printf("\tSending board to Player One (%d)\n", player_one);
+    send(player_one, one_dimension_board, 64, 0);
+
+    // Invert the board for Player Two and send it
+    printf("\tSending inverted board to Player Two (%d)\n", player_two);
+    send(player_two, one_dimension_board, 64, 0);
+
+    // Clean up the dynamically allocated memory for the inverted board
+    printf("\tSent board to both players...\n");
+}
+
+// void broadcast(wchar_t ** board, char * one_dimension_board, int player_one, int player_two) {
+
+//   to_one_dimension_char(board, one_dimension_board);
+
+//   printf("\tSending board to %d and %d size(%lu)\n", player_one, player_two, sizeof(one_dimension_board));
+//   send(player_one, one_dimension_board, 64, 0);
+//   char *inverted_board = invert_board(one_dimension_board);
+//   send(player_two, inverted_board, 64, 0);
+//   printf("\tSent board...\n");
+// }
 
 int get_piece_team(wchar_t ** board, int x, int y) {
 
@@ -417,195 +569,399 @@ bool is_move_valid(wchar_t ** board, int player, int team, int * move) {
   return true;
 }
 
-void * game_room(void *client_socket) {
-  /* If connection is established then start communicating */
-  int player_one = *(int *)client_socket;
-  int n, player_two;
-  char buffer[64];
-  int * move = (int *)malloc(sizeof(int)*4);
+void add_online_player(int socket, const char *username, int elo) {
+    pthread_mutex_lock(&general_mutex);
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (clients[i].socket == 0) { // Empty slot
+            clients[i].socket = socket;
+            strncpy(clients[i].username, username, sizeof(clients[i].username) - 1);
+            clients[i].elo = elo;
+            clients[i].is_waiting = 0;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&general_mutex);
+}
 
-  // Create a new board
-  wchar_t ** board = create_board();
-  char * one_dimension_board = create_od_board();
-  initialize_board(board);
+// Remove a player from the online list
+void remove_online_player(int socket) {
+    pthread_mutex_lock(&general_mutex);
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (clients[i].socket == socket) {
+            clients[i].socket = 0;
+            memset(clients[i].username, 0, sizeof(clients[i].username));
+            clients[i].elo = 0;
+            clients[i].is_waiting = 0;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&general_mutex);
+}
 
-  player_is_waiting = 1; // Set user waiting
+int find_match(int socket, int player_elo) {
+    int closest_socket = -1;
+    int closest_elo_diff = 10000000;
 
-  pthread_mutex_lock(&general_mutex); // Wait for player two
-  pthread_cond_wait(&player_to_join, &general_mutex); // Wait for player wants to join signal
+    pthread_mutex_lock(&general_mutex);
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (clients[i].socket != 0 && clients[i].is_waiting && clients[i].socket != socket) {
+            int elo_diff = abs(clients[i].elo - player_elo);
+            if (elo_diff < closest_elo_diff && elo_diff <= 50) { // Elo range ±50
+                closest_socket = clients[i].socket;
+                closest_elo_diff = elo_diff;
+            }
+        }
+    }
+    pthread_mutex_unlock(&general_mutex);
 
-  // TODO lock assigning player mutex
-  player_two = challenging_player; // Asign the player_two to challenging_player
-  player_is_waiting = 0; // Now none is waiting
+    return closest_socket;
+}
 
-  pthread_mutex_unlock(&general_mutex); // Unecesary?
+void matchmaking(client_info *client) {
+    printf("Client %s entering matchmaking...\n", client->username);
 
-  if (send(player_one, "i-p1", 4, 0) < 0) {
+    pthread_mutex_lock(&general_mutex);
+
+    printf("Player is_waiting: %d\n", player_is_waiting);
+
+    if (player_is_waiting == 0) {
+        // No player is waiting; become Player One
+        printf("No player waiting. Creating new game room for Player One: %s\n", client->username);
+        player_is_waiting = 1;
+        challenging_player = client->socket;
+
+        // Wait for second player
+        pthread_cond_wait(&player_to_join, &general_mutex);
+    } else {
+        // Player is waiting; become Player Two
+        printf("Player waiting. Assigning Player Two: %s\n", client->username);
+        int player_one_socket = challenging_player;
+        int player_two_socket = client->socket;
+
+        player_is_waiting = 0;
+        pthread_cond_signal(&player_to_join);
+        pthread_mutex_unlock(&general_mutex);
+
+        // Start the game room
+        game_room(player_one_socket, player_two_socket);
+        return;
+    }
+
+    pthread_mutex_unlock(&general_mutex);
+}
+
+
+
+void game_room(int player_one_socket, int player_two_socket) {
+    printf("Starting game between Player One (%d) and Player Two (%d).\n", player_one_socket, player_two_socket);
+
+    int *move = (int *)malloc(sizeof(int) * 4);
+    char buffer[64];
+    wchar_t **board = create_board();
+    char *one_dimension_board = create_od_board();
+    initialize_board(board);
+
+    // Notify players of their roles
+    // if (send(player_one_socket, "i-p1", 4, 0) < 0 || send(player_two_socket, "i-p2", 4, 0) < 0) {
+    //     perror("ERROR sending player roles");
+    //     close(player_one_socket);
+    //     close(player_two_socket);
+    //     free_board(board);
+    //     free(one_dimension_board);
+    //     free(move);
+    //     return;
+    // }
+
+    if (send(player_one_socket, "i-p1", 4, 0) < 0) {
      perror("ERROR writing to socket");
      exit(1);
   }
-  if (send(player_two, "i-p2", 4, 0) < 0) {
+  if (send(player_two_socket, "i-p2", 4, 0) < 0) {
      perror("ERROR writing to socket");
      exit(1);
   }
 
   sleep(1);
 
-  // Broadcast the board to all the room players
-  broadcast(board, one_dimension_board, player_one, player_two);
+    // Broadcast the initial board
+    broadcast(board, one_dimension_board, player_one_socket, player_two_socket);
 
-  sleep(1);
+    bool syntax_valid = false;
+    bool move_valid = false;
 
-  bool syntax_valid = false;
-  bool move_valid = false;
+    while (1) {
+        // Player One's turn
+        send(player_one_socket, "i-tm", 4, 0);
+        send(player_two_socket, "i-nm", 4, 0);
 
-  while (1) {
+        printf("Waiting for move from Player One (%d)...\n", player_one_socket);
+        while (!syntax_valid || !move_valid) {
+            bzero(buffer, 64);
+            if (read(player_one_socket, buffer, sizeof(buffer)) <= 0) {
+                perror("ERROR reading Player One move");
+                goto cleanup;
+            }
+            printf("Player One move: %s\n", buffer);
 
-    send(player_one, "i-tm", 4, 0);
-    send(player_two, "i-nm", 4, 0);
+            syntax_valid = is_syntax_valid(player_one_socket, buffer);
+            translate_to_move(move, buffer);  // Convert buffer to move
+            move_valid = is_move_valid(board, player_one_socket, 1, move); // Validate the move
+        }
+        syntax_valid = false;
+        move_valid = false;
 
-    // Wait until syntax and move are valid
-    printf("Waiting for move from player one (%d)... sending i\n", player_one);
+        move_piece(board, move);  // Apply Player One's move
+        broadcast(board, one_dimension_board, player_one_socket, player_two_socket);
 
-    while (!syntax_valid  || !move_valid) {
-      bzero(buffer, 64);
+        // Player Two's turn
+        send(player_one_socket, "i-nm", 4, 0);
+        send(player_two_socket, "i-tm", 4, 0);
 
-      printf("Checking syntax and move validation (%d,%d)\n", syntax_valid, move_valid);
-      if (read(player_one, buffer, 6) < 0) {
-        perror("ERROR reading from socket");
-        exit(1);
-      }
-      printf("Player one (%d) move: %s\n", player_one, buffer);
+        printf("Waiting for move from Player Two (%d)...\n", player_two_socket);
+        while (!syntax_valid || !move_valid) {
+            bzero(buffer, 64);
+            if (read(player_two_socket, buffer, sizeof(buffer)) <= 0) {
+                perror("ERROR reading Player Two move");
+                goto cleanup;
+            }
+            printf("Player Two move: %s\n", buffer);
 
-      syntax_valid = is_syntax_valid(player_one, buffer);
+            syntax_valid = is_syntax_valid(player_two_socket, buffer);
+            translate_to_move(move, buffer);  // Convert buffer to move
+            move_valid = is_move_valid(board, player_two_socket, -1, move); // Validate the move
+        }
+        syntax_valid = false;
+        move_valid = false;
 
-      translate_to_move(move, buffer); // Convert to move
-
-      // TODO
-      move_valid = is_move_valid(board, player_one, 1, move);
+        move_piece(board, move);  // Apply Player Two's move
+        broadcast(board, one_dimension_board, player_one_socket, player_two_socket);
+        sleep(1);
     }
 
-    printf("Player one (%d) made move\n", player_one);
+cleanup:
+    free_board(board);
+    free(one_dimension_board);
+    free(move);
+    close(player_one_socket);
+    close(player_two_socket);
+}
 
-    syntax_valid = false;
-    move_valid = false;
 
-    // Apply move to board
-    move_piece(board, move);
+void *handle_client(void *arg) {
+    client_info *client = (client_info *)arg;
+    char buffer[1024], response[1024];
+    int bytes_received;
+    int elo = 1000; // Default Elo for new users
 
-    // Send applied move board
-    broadcast(board, one_dimension_board, player_one, player_two);
-    sleep(1);
-    send(player_one, "i-nm", 4, 0);
-    send(player_two, "i-tm", 4, 0);
+    // Authentication phase
+    while (1) {
+        bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
+        if (bytes_received <= 0) {
+            printf("Client disconnected during authentication.\n");
+            close(client->socket);
+            return NULL;
+        }
 
-    printf("Waiting for move from player two (%d)\n", player_two);
+        buffer[bytes_received] = '\0';
+        char *command = strtok(buffer, " ");
+        char *username = strtok(NULL, " ");
+        char *password = strtok(NULL, " ");
 
-    while (!syntax_valid  || !move_valid) {
-      bzero(buffer, 64);
-
-      if (read(player_two, buffer, 6) < 0) {
-        perror("ERROR reading from socket");
-        exit(1);
-      }
-
-      syntax_valid = is_syntax_valid(player_two, buffer);
-
-      translate_to_move(move, buffer); // Convert to move
-
-      move_valid = is_move_valid(board, player_two, -1, move);
+        if (strcmp(command, "REGISTER") == 0) {
+            if (register_user(username, password)) {
+                snprintf(response, sizeof(response), "Registration successful.\n");
+                strncpy(client->username, username, sizeof(client->username));
+                add_online_player(client->socket, username, elo); // Add player with default Elo
+                send(client->socket, response, strlen(response), 0);
+                break;
+            } else {
+                snprintf(response, sizeof(response), "Registration failed. Username exists.\n");
+            }
+        } else if (strcmp(command, "LOGIN") == 0) {
+            if (validate_login(username, password)) {
+                elo = get_user_elo(username); // Fetch Elo from database or file
+                snprintf(response, sizeof(response), "Login successful.\n");
+                strncpy(client->username, username, sizeof(client->username));
+                add_online_player(client->socket, username, elo);
+                send(client->socket, response, strlen(response), 0);
+                break;
+            } else {
+                snprintf(response, sizeof(response), "Login failed. Invalid credentials.\n");
+            }
+        } else {
+            snprintf(response, sizeof(response), "Invalid command. Use REGISTER or LOGIN.\n");
+        }
+        send(client->socket, response, strlen(response), 0);
     }
-    printf("Player two (%d) made move\n", player_two);
 
-    syntax_valid = false;
-    move_valid = false;
+    printf("Client %s authenticated with Elo %d.\n", client->username, elo);
 
-    // Apply move to board
-    move_piece(board, move);
+    // Enter matchmaking
+    matchmaking(client);
 
-    // Send applied move board
-    broadcast(board, one_dimension_board, player_one, player_two);
-    sleep(1);
+    // Cleanup when the client disconnects
+    remove_online_player(client->socket);
+    close(client->socket);
 
-  }
-
-  /* delete board */
-  free(move);
-  free_board(board);
-
+    return NULL;
 }
 
-int main( int argc, char *argv[] ) {
-  pthread_t tid[1];
-  setlocale(LC_ALL, "en_US.UTF-8");
 
-  int sockfd, client_socket, port_number, client_length;
-  char buffer[64];
-  struct sockaddr_in server_address, client;
-  int  n;
+int main(int argc, char *argv[]) {
+    setlocale(LC_ALL, "en_US.UTF-8");
 
-  // Conditional variable
-  pthread_cond_init(&player_to_join, NULL);
-  pthread_mutex_init(&general_mutex, NULL);
+    int sockfd, client_socket, port_number, client_length;
+    struct sockaddr_in server_address, client;
 
-  /* First call to socket() function */
-  sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    pthread_t client_threads[MAX_CLIENTS];
+    pthread_cond_init(&player_to_join, NULL);
+    pthread_mutex_init(&general_mutex, NULL);
 
-  if (sockfd < 0) {
-    perror("ERROR opening socket");
-    exit(1);
-  }
-
-  /* Initialize socket structure */
-  bzero((char *) &server_address, sizeof(server_address));
-  port_number = PORT;
-
-  server_address.sin_family = AF_INET;
-  server_address.sin_addr.s_addr = INADDR_ANY;
-  server_address.sin_port = htons(port_number);
-
-  /* Now bind the host address using bind() call.*/
-  if (bind(sockfd, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) {
-      perror("ERROR on binding");
-      exit(1);
-   }
-
-          /* MAX_QUEUE */
-  listen(sockfd, 20);
-  printf("Server listening on port %d\n", port_number);
-
-   while(1) {
-     client_length = sizeof(client);
-     // CHECK IF WE'VE A WAITING USER
-
-     /* Accept actual connection from the client */
-     client_socket = accept(sockfd, (struct sockaddr *)&client, (unsigned int *)&client_length);
-     printf("– Connection accepted from %d at %d.%d.%d.%d:%d –\n", client_socket, client.sin_addr.s_addr&0xFF, (client.sin_addr.s_addr&0xFF00)>>8, (client.sin_addr.s_addr&0xFF0000)>>16, (client.sin_addr.s_addr&0xFF000000)>>24, client.sin_port);
-
-     if (client_socket < 0) {
-        perror("ERROR on accept");
+    // Create socket
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("ERROR opening socket");
         exit(1);
-     }
+    }
 
-     pthread_mutex_lock(&general_mutex); // Unecesary?
-     // Create thread if we have no user waiting
-     if (player_is_waiting == 0) {
-       printf("Connected player, creating new game room...\n");
-       pthread_create(&tid[0], NULL, &game_room, &client_socket);
-       pthread_mutex_unlock(&general_mutex); // Unecesary?
-     }
-     // If we've a user waiting join that room
-     else {
-       // Send user two signal
-       printf("Connected player, joining game room... %d\n", client_socket);
-       challenging_player = client_socket;
-       pthread_mutex_unlock(&general_mutex); // Unecesary?
-       pthread_cond_signal(&player_to_join);
-     }
+    // Initialize socket structure
+    bzero((char *)&server_address, sizeof(server_address));
+    port_number = PORT;
+    server_address.sin_family = AF_INET;
+    server_address.sin_addr.s_addr = INADDR_ANY;
+    server_address.sin_port = htons(port_number);
 
-   }
+    // Bind the socket
+    if (bind(sockfd, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
+        perror("ERROR on binding");
+        exit(1);
+    }
 
-   close(sockfd);
+    // Listen for incoming connections
+    listen(sockfd, 20);
+    printf("Server listening on port %d\n", port_number);
 
-   return 0;
+    while (1) {
+        client_length = sizeof(client);
+
+        // Accept a client connection
+        client_socket = accept(sockfd, (struct sockaddr *)&client, (unsigned int *)&client_length);
+        if (client_socket < 0) {
+            perror("ERROR on accept");
+            continue;
+        }
+
+        printf("Connection accepted from %d.%d.%d.%d:%d\n",
+               client.sin_addr.s_addr & 0xFF,
+               (client.sin_addr.s_addr & 0xFF00) >> 8,
+               (client.sin_addr.s_addr & 0xFF0000) >> 16,
+               (client.sin_addr.s_addr & 0xFF000000) >> 24,
+               ntohs(client.sin_port));
+
+        // Create a thread to handle authentication
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            pthread_mutex_lock(&general_mutex);
+            if (clients[i].socket == 0) {
+                clients[i].socket = client_socket;
+                clients[i].address = client;
+                clients[i].index = i;
+                pthread_create(&client_threads[i], NULL, handle_client, &clients[i]);
+                pthread_mutex_unlock(&general_mutex);
+                break;
+            }
+            pthread_mutex_unlock(&general_mutex);
+        }
+    }
+
+    close(sockfd);
+    return 0;
 }
+
+
+// int main( int argc, char *argv[] ) {
+//   pthread_t tid[1];
+//   setlocale(LC_ALL, "en_US.UTF-8");
+
+//   int sockfd, client_socket, port_number, client_length;
+//   char buffer[64];
+//   struct sockaddr_in server_address, client;
+//   int  n;
+
+//   // Conditional variable
+//   pthread_cond_init(&player_to_join, NULL);
+//   pthread_mutex_init(&general_mutex, NULL);
+
+//   /* First call to socket() function */
+//   sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+//   if (sockfd < 0) {
+//     perror("ERROR opening socket");
+//     exit(1);
+//   }
+
+//   /* Initialize socket structure */
+//   bzero((char *) &server_address, sizeof(server_address));
+//   port_number = PORT;
+
+//   server_address.sin_family = AF_INET;
+//   server_address.sin_addr.s_addr = INADDR_ANY;
+//   server_address.sin_port = htons(port_number);
+
+//   /* Now bind the host address using bind() call.*/
+//   if (bind(sockfd, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) {
+//       perror("ERROR on binding");
+//       exit(1);
+//    }
+
+//           /* MAX_QUEUE */
+//   listen(sockfd, 20);
+//   printf("Server listening on port %d\n", port_number);
+//   pthread_t threads[MAX_CLIENTS];
+//    while(1) {
+//      client_length = sizeof(client);
+//      // CHECK IF WE'VE A WAITING USER
+
+//      /* Accept actual connection from the client */
+//      client_socket = accept(sockfd, (struct sockaddr *)&client, (unsigned int *)&client_length);
+
+//      if (client_socket < 0) {
+//         perror("ERROR on accept");
+//         exit(1);
+//      }
+
+//      pthread_mutex_lock(&general_mutex);
+//         int i;
+//         for (i = 0; i < MAX_CLIENTS; i++) {
+//             if (clients[i].socket == 0) {
+//                 clients[i].socket = client_socket;
+//                 clients[i].address = client;
+//                 clients[i].index = i;
+//                 pthread_create(&threads[i], NULL, handle_client, &clients[i]);
+//                 break;
+//             }
+//         }
+//         pthread_mutex_unlock(&general_mutex);
+//       printf("– Connection accepted from %d at %d.%d.%d.%d:%d –\n", client_socket, client.sin_addr.s_addr&0xFF, (client.sin_addr.s_addr&0xFF00)>>8, (client.sin_addr.s_addr&0xFF0000)>>16, (client.sin_addr.s_addr&0xFF000000)>>24, client.sin_port);
+
+//      pthread_mutex_lock(&general_mutex); // Unecesary?
+//      // Create thread if we have no user waiting
+//      if (player_is_waiting == 0) {
+//        printf("Connected player, creating new game room...\n");
+//        pthread_create(&tid[0], NULL, &game_room, &client_socket);
+//        pthread_mutex_unlock(&general_mutex); // Unecesary?
+//      }
+//      // If we've a user waiting join that room
+//      else {
+//        // Send user two signal
+//        printf("Connected player, joining game room... %d\n", client_socket);
+//        challenging_player = client_socket;
+//        pthread_mutex_unlock(&general_mutex); // Unecesary?
+//        pthread_cond_signal(&player_to_join);
+//      }
+
+//    }
+
+//    close(sockfd);
+
+//    return 0;
+// }
