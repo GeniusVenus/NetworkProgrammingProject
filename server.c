@@ -16,6 +16,8 @@
 
 #define PORT 8080;
 
+#define MAX_LINE_LENGTH 256
+#define MAX_USERNAME_LENGTH 50
 #define MAX_CLIENTS 5
 #define BUFFER_SIZE 1024
 #define ACCOUNT_FILE "account.txt"
@@ -23,7 +25,7 @@
 // Waiting player conditional variable
 pthread_cond_t player_to_join;
 pthread_mutex_t general_mutex;
-#define MAX_PLAYERS 100
+#define MAX_PLAYERS 20
 bool is_diagonal(int, int);
 
 typedef struct {
@@ -37,7 +39,67 @@ typedef struct {
     int played;
 } client_info;
 
-client_info clients[MAX_CLIENTS];
+client_info clients[MAX_CLIENTS] = {0};
+
+void update_or_add_user_elo(const char *filename, const char *username, int newElo) {
+    // Temporary file for writing
+    const char *tempFile = "temp.txt";
+
+    // Open the original file for reading
+    FILE *filePointer = fopen(filename, "r");
+    if (filePointer == NULL) {
+        printf("Error opening file for reading!\n");
+        return;
+    }
+
+    // Open the temporary file for writing
+    FILE *tempPointer = fopen(tempFile, "w");
+    if (tempPointer == NULL) {
+        printf("Error opening temporary file for writing!\n");
+        fclose(filePointer);
+        return;
+    }
+
+    char line[MAX_LINE_LENGTH];
+    char storedUsername[MAX_USERNAME_LENGTH];
+    int storedElo;
+    int found = 0;
+
+    // Process each line
+    while (fgets(line, sizeof(line), filePointer)) {
+        if (sscanf(line, "%s %d", storedUsername, &storedElo) == 2) {
+            if (strcmp(storedUsername, username) == 0) {
+                // Update Elo if username matches
+                fprintf(tempPointer, "%s %d\n", storedUsername, newElo);
+                found = 1;
+            } else {
+                // Write unchanged line
+                fprintf(tempPointer, "%s", line);
+            }
+        } else {
+            // Write lines that don't match the expected format
+            fprintf(tempPointer, "%s", line);
+        }
+    }
+
+    // Append the new user if not found
+    if (!found) {
+        fprintf(tempPointer, "%s %d\n", username, newElo);
+    }
+
+    // Close files
+    fclose(filePointer);
+    fclose(tempPointer);
+
+    // Replace the original file with the updated file
+    if (remove(filename) != 0 || rename(tempFile, filename) != 0) {
+        printf("Error updating the file!\n");
+        return;
+    }
+
+    printf("File updated successfully!\n");
+}
+
 
 int get_user_elo(const char *username) {
     FILE *file = fopen("elo_ratings.txt", "r");
@@ -53,6 +115,7 @@ int get_user_elo(const char *username) {
     while (fgets(line, sizeof(line), file)) {
         if (sscanf(line, "%s %d", stored_username, &stored_elo) == 2) {
             if (strcmp(username, stored_username) == 0) {
+                printf("tìm thấy tên ở đây này\n");
                 fclose(file);
                 return stored_elo; // Return Elo if username matches
             }
@@ -61,6 +124,23 @@ int get_user_elo(const char *username) {
 
     fclose(file);
     return 1000; // Default Elo if user not found
+}
+
+int initialize_elo(const char *username) {
+    FILE *file = fopen("elo_ratings.txt", "a+");
+    if (!file) return 0;
+
+    char file_username[50];
+    while (fscanf(file, "%s", file_username) != EOF) {
+        if (strcmp(username, file_username) == 0) {
+            fclose(file);
+            return 0;
+        }
+    }
+
+    fprintf(file, "%s %d\n", username, 1000);
+    fclose(file);
+    return 1;
 }
 
 int validate_login(const char *username, const char *password) {
@@ -569,19 +649,26 @@ bool is_move_valid(wchar_t ** board, int player, int team, int * move) {
   return true;
 }
 
-void add_online_player(int socket, const char *username, int elo) {
+void add_online_player(int socket, const char *username, int elo, int is_waiting) {
     pthread_mutex_lock(&general_mutex);
-    for (int i = 0; i < MAX_PLAYERS; i++) {
-        if (clients[i].socket == 0) { // Empty slot
+
+    // Find an empty slot in the `clients` array
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i].socket != 0 && clients[i].socket == socket) { // Look for an empty slot
             clients[i].socket = socket;
-            strncpy(clients[i].username, username, sizeof(clients[i].username) - 1);
-            clients[i].elo = elo;
-            clients[i].is_waiting = 0;
-            break;
+            strncpy(clients[i].username, username, sizeof(clients[i].username) - 1); // Copy the username
+            clients[i].elo = elo; // Set the Elo rating
+            clients[i].is_waiting = is_waiting; // Set whether the player is waiting for a match
+            clients[i].index = i; // Store the index in the array
+            printf("New client %s (socket=%d, elo=%d) added to online list at position %d.\n",
+                   username, socket, elo, i);
+            break; // Exit the loop after adding the client
         }
     }
+
     pthread_mutex_unlock(&general_mutex);
 }
+
 
 // Remove a player from the online list
 void remove_online_player(int socket) {
@@ -592,53 +679,113 @@ void remove_online_player(int socket) {
             memset(clients[i].username, 0, sizeof(clients[i].username));
             clients[i].elo = 0;
             clients[i].is_waiting = 0;
+            clients[i].address.sin_family = 0; // Reset the structure
+            clients[i].index = -1;
+            printf("Client (socket=%d) removed from online list.\n", socket);
             break;
         }
     }
     pthread_mutex_unlock(&general_mutex);
 }
 
+
 int find_match(int socket, int player_elo) {
     int closest_socket = -1;
     int closest_elo_diff = 10000000;
+    printf("1\n");
+    // pthread_mutex_lock(&general_mutex);
 
-    pthread_mutex_lock(&general_mutex);
-    for (int i = 0; i < MAX_PLAYERS; i++) {
+    // Debugging: log client information to ensure correctness
+    // pthread_mutex_lock(&general_mutex);
+for (int i = 0; i < 10; i++) {
+    if (clients[i].socket > 0) {
+        printf("Checking client[%d]: socket=%d, is_waiting=%d, elo=%d\n",
+               i, clients[i].socket, clients[i].is_waiting, clients[i].elo);
+    }
+}
+pthread_mutex_unlock(&general_mutex);
+
+    printf("2\n");
+
+    for (int i = 0; i < 15; i++) {
         if (clients[i].socket != 0 && clients[i].is_waiting && clients[i].socket != socket) {
             int elo_diff = abs(clients[i].elo - player_elo);
-            if (elo_diff < closest_elo_diff && elo_diff <= 50) { // Elo range ±50
+            if (elo_diff < closest_elo_diff && elo_diff <= 50) {
                 closest_socket = clients[i].socket;
                 closest_elo_diff = elo_diff;
             }
         }
     }
-    pthread_mutex_unlock(&general_mutex);
+    printf("3\n");
+
+    // pthread_mutex_unlock(&general_mutex);
 
     return closest_socket;
 }
 
-void matchmaking(client_info *client) {
-    printf("Client %s entering matchmaking...\n", client->username);
 
+void matchmaking(client_info *client) {
+    if (client == NULL) {
+        fprintf(stderr, "Error: client_info is NULL.\n");
+        return;
+    }
+
+    printf("Client %s (Elo: %d) entering matchmaking...\n", client->username, client->elo);
+
+    // Step 1: Try to find a match
+    
+    int opponent_socket;
+    pthread_mutex_lock(&general_mutex);
+    for (int j = 0; j < 5; ++ j) {
+      opponent_socket = find_match(client->socket, client->elo);
+      sleep(5);
+    }
+    pthread_mutex_unlock(&general_mutex);
+
+    printf("%d\n", opponent_socket);
+    if (opponent_socket != -1) {
+        printf("Match found for Client %s with opponent socket %d.\n", client->username, opponent_socket);
+
+        pthread_mutex_lock(&general_mutex);
+
+        // Reset opponent's waiting status
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (clients[i].socket == opponent_socket) {
+                clients[i].is_waiting = 0;
+                break;
+            }
+        }
+
+        pthread_mutex_unlock(&general_mutex);
+
+        // Start the game room with matched players
+        game_room(client->socket, opponent_socket);
+        return;
+    }
+
+    // Step 2: No match found, fallback to waiting
+    printf("No match found. Client %s will wait.\n", client->username);
     pthread_mutex_lock(&general_mutex);
 
-    printf("Player is_waiting: %d\n", player_is_waiting);
-
     if (player_is_waiting == 0) {
-        // No player is waiting; become Player One
-        printf("No player waiting. Creating new game room for Player One: %s\n", client->username);
+        // Become Player One
+        printf("Client %s is now Player One.\n", client->username);
         player_is_waiting = 1;
         challenging_player = client->socket;
 
-        // Wait for second player
+        // Wait for another player
         pthread_cond_wait(&player_to_join, &general_mutex);
     } else {
-        // Player is waiting; become Player Two
-        printf("Player waiting. Assigning Player Two: %s\n", client->username);
+        // Become Player Two
+        printf("Client %s is now Player Two.\n", client->username);
         int player_one_socket = challenging_player;
         int player_two_socket = client->socket;
 
+        // Reset waiting state
         player_is_waiting = 0;
+        challenging_player = -1;
+
+        // Signal Player One
         pthread_cond_signal(&player_to_join);
         pthread_mutex_unlock(&general_mutex);
 
@@ -649,7 +796,6 @@ void matchmaking(client_info *client) {
 
     pthread_mutex_unlock(&general_mutex);
 }
-
 
 
 void game_room(int player_one_socket, int player_two_socket) {
@@ -746,7 +892,6 @@ cleanup:
     close(player_two_socket);
 }
 
-
 void *handle_client(void *arg) {
     client_info *client = (client_info *)arg;
     char buffer[1024], response[1024];
@@ -769,9 +914,10 @@ void *handle_client(void *arg) {
 
         if (strcmp(command, "REGISTER") == 0) {
             if (register_user(username, password)) {
+                int x = initialize_elo(username);
                 snprintf(response, sizeof(response), "Registration successful.\n");
                 strncpy(client->username, username, sizeof(client->username));
-                add_online_player(client->socket, username, elo); // Add player with default Elo
+                add_online_player(client->socket, username, elo, 1); // Add player with default Elo
                 send(client->socket, response, strlen(response), 0);
                 break;
             } else {
@@ -780,9 +926,10 @@ void *handle_client(void *arg) {
         } else if (strcmp(command, "LOGIN") == 0) {
             if (validate_login(username, password)) {
                 elo = get_user_elo(username); // Fetch Elo from database or file
+                int x = initialize_elo(username);
                 snprintf(response, sizeof(response), "Login successful.\n");
                 strncpy(client->username, username, sizeof(client->username));
-                add_online_player(client->socket, username, elo);
+                add_online_player(client->socket, username, elo, 1);
                 send(client->socket, response, strlen(response), 0);
                 break;
             } else {
@@ -807,12 +954,25 @@ void *handle_client(void *arg) {
 }
 
 
+
+int is_duplicate_socket(int socket) {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i].socket == socket) {
+            return 1; // Found a duplicate
+        }
+    }
+    return 0; // No duplicates
+}
+
+
+
 int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "en_US.UTF-8");
 
     int sockfd, client_socket, port_number, client_length;
     struct sockaddr_in server_address, client;
-
+    
+    
     pthread_t client_threads[MAX_CLIENTS];
     pthread_cond_init(&player_to_join, NULL);
     pthread_mutex_init(&general_mutex, NULL);
@@ -857,22 +1017,21 @@ int main(int argc, char *argv[]) {
                (client.sin_addr.s_addr & 0xFF0000) >> 16,
                (client.sin_addr.s_addr & 0xFF000000) >> 24,
                ntohs(client.sin_port));
+        
 
         // Create a thread to handle authentication
+        pthread_mutex_lock(&general_mutex);
         for (int i = 0; i < MAX_CLIENTS; i++) {
-            pthread_mutex_lock(&general_mutex);
-            if (clients[i].socket == 0) {
+            if (clients[i].socket == 0) {  // Ensure the client slot is correctly 
                 clients[i].socket = client_socket;
                 clients[i].address = client;
                 clients[i].index = i;
                 pthread_create(&client_threads[i], NULL, handle_client, &clients[i]);
-                pthread_mutex_unlock(&general_mutex);
                 break;
             }
-            pthread_mutex_unlock(&general_mutex);
         }
+        pthread_mutex_unlock(&general_mutex);
     }
-
     close(sockfd);
     return 0;
 }
