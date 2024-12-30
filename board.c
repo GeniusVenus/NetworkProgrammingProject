@@ -1,23 +1,8 @@
-#include <wchar.h>
-#include <locale.h>
-#include <stdlib.h>
+#include "board.h";
 
-#define white_king   0x2654 // ♔
-#define white_queen  0x2655 // ♕
-#define white_rook   0x2656 // ♖
-#define white_bishop 0x2657 // ♗
-#define white_knight 0x2658 // ♘
-#define white_pawn   0x2659 // ♙
-#define black_king   0x265A // ♚
-#define black_queen  0x265B // ♛
-#define black_rook   0x265C // ♜
-#define black_bishop 0x265D // ♝
-#define black_knight 0x265E // ♞
-#define black_pawn   0x265F // ♟
+void debug_print_board(wchar_t **);
 
-static void debug_print_board(wchar_t **);
-
-static wchar_t ** create_board() {
+wchar_t ** create_board() {
   // create dinamically malloc
 
   wchar_t ** board = (wchar_t **) malloc(sizeof(wchar_t *)*8);
@@ -28,7 +13,7 @@ static wchar_t ** create_board() {
   return board;
 }
 
-static void initialize_board(wchar_t ** p_board) {
+void initialize_board(wchar_t ** p_board) {
   for (int i = 0; i < 8; i++) {
     for (int j = 0; j < 8; j++) {
 
@@ -56,12 +41,12 @@ static void initialize_board(wchar_t ** p_board) {
   }
 }
 
-static char * create_od_board() {
+char * create_od_board() {
   char * board = (char *) malloc(sizeof(char *)*8*8);
   return board;
 }
 
-static void to_one_dimension_char(wchar_t ** board, char * od_board) {
+void to_one_dimension_char(wchar_t ** board, char * od_board) {
 
   for (int i = 0; i < 8; i++) {
     for (int j = 0; j < 8; j++) {
@@ -83,18 +68,18 @@ static void to_one_dimension_char(wchar_t ** board, char * od_board) {
 
 }
 
-static void free_od_board(wchar_t * od_board) {
+void free_od_board(wchar_t * od_board) {
   free(od_board);
 }
 
-static void free_board(wchar_t ** board) {
+void free_board(wchar_t ** board) {
   for (int i = 0; i < 8; i++) {
     free(board[i]);
   }
   free(board);
 }
 
-static void debug_print_board(wchar_t ** board) {
+void debug_print_board(wchar_t ** board) {
   setlocale( LC_ALL, "en_US.UTF-8" );
   for (int i = 0; i < 8; i++) {
     for (int j = 0; j < 8; j++) {
@@ -106,7 +91,7 @@ static void debug_print_board(wchar_t ** board) {
   }
 }
 
-static wchar_t translate_piece (char char_piece) {
+wchar_t translate_piece (char char_piece) {
   if (char_piece == '1') return white_rook;
   else if (char_piece == '2') return white_knight;
   else if (char_piece == '3') return white_bishop;
@@ -122,7 +107,7 @@ static wchar_t translate_piece (char char_piece) {
   else return ' ';
 }
 
-static void print_board_buff(char * board) {
+void print_board_buff(char * board) {
   setlocale( LC_ALL, "en_US.UTF-8" );
   printf("         a   b   c   d   e   f   g   h     \n");
   printf("       ┌───┬───┬───┬───┬───┬───┬───┬───┐   \n");
@@ -145,7 +130,7 @@ static void print_board_buff(char * board) {
   printf("         a   b   c   d   e   f   g   h     \n\n");
 }
 
-static void print_board_buff_inverted(char * board) {
+void print_board_buff_inverted(char * board) {
   setlocale( LC_ALL, "en_US.UTF-8" );
   printf("         a   b   c   d   e   f   g   h     \n");
   printf("       ┌───┬───┬───┬───┬───┬───┬───┬───┐   \n");
