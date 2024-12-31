@@ -195,6 +195,7 @@ void matchmaking(client_info *client) {
     pthread_mutex_unlock(&general_mutex);
 }
 
+
 void game_room(int player_one_socket, int player_two_socket) {
     printf("Starting game between Player One (%d) and Player Two (%d).\n", player_one_socket, player_two_socket);
 
@@ -439,11 +440,11 @@ void *handle_client(void *arg) {
 
         buffer[bytes_received] = '\0';
         char *command = strtok(buffer, " ");
-
+        char *username = strtok(NULL, " ");
+        char *password = strtok(NULL, " ");
 
         if (strcmp(command, "REGISTER") == 0) {
-            char *username = strtok(NULL, " ");
-            char *password = strtok(NULL, " ");
+            
             if (register_user(username, password)) {
                 int x = initialize_elo(username);
                 snprintf(response, sizeof(response), "Registration successful.\n");
@@ -456,8 +457,7 @@ void *handle_client(void *arg) {
                 snprintf(response, sizeof(response), "Registration failed. Username exists.\n");
             }
         } else if (strcmp(command, "LOGIN") == 0) {
-            char *username = strtok(NULL, " ");
-            char *password = strtok(NULL, " ");
+            
             if (validate_login(username, password)) {
                 elo = get_user_elo(username);
                 int x = initialize_elo(username);
