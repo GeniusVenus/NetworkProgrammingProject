@@ -13,6 +13,7 @@
 #define RED   "\x1B[31m"
 #define RESET "\x1B[0m"
 #define GREEN  "\x1B[32m"
+#define YELLOW "\x1B[33m"
 
 void * on_signal(void * sockfd) {
   char buffer[64];
@@ -36,6 +37,23 @@ void * on_signal(void * sockfd) {
         }
         if (buffer[2] == 'n') {
           printf("\nWaiting for opponent...\n");
+        }
+        if (buffer[2] == 'l') {
+          printf(RED "\nYou lose...\n" RESET);
+          // if (!rematch(sockfd)) {
+          //   printf("Rematch not accepted. Exiting.\n");
+          //   close(sockfd);
+          // }
+        }
+        if (buffer[2] == 'w'){
+          printf(GREEN "\nYou win...\n" RESET);
+        }
+        if (buffer[2] == 'd'){
+          printf(YELLOW"\nDraw...\n" RESET);
+          // if (!rematch(sockfd)) {
+          //   printf("Rematch not accepted. Exiting.\n");
+          //   close(sockfd);
+          // }
         }
         if (buffer[2] == 'p') {
           *player = atoi(&buffer[3]);
@@ -85,7 +103,6 @@ void * on_signal(void * sockfd) {
       if (*player == 1) {
         print_board_buff(buffer);
       } else {
-        printf("%s: %d", "Here:", *player);
         print_board_buff_inverted(buffer);
       }
     }
@@ -133,6 +150,30 @@ int authenticate(int socket) {
     printf("%s", buffer);
 
     return strstr(buffer, "successful") != NULL;
+}
+
+int rematch(int socket){
+  char buffer[1024];
+  char command[20];
+  int choice;
+  printf("\n Send rematch request? (1 for YES, 0 for NO)");
+  scanf("%d", &choice);
+  if(choice == 0) strcpy(command, "REMATCH");
+  else strcpy(command, "NOT_REMATCH");
+
+  snprintf(buffer, sizeof(buffer), "%s %s %s", command);
+  send(socket, buffer, strlen(buffer), 0);
+
+  int bytes_received = recv(socket, buffer, sizeof(buffer) - 1, 0);
+  if (bytes_received <= 0) {
+      printf("Disconnected from server.\n");
+      return 0;
+  }
+
+  buffer[bytes_received] = '\0';
+  printf("%s", buffer);
+
+  return strstr(buffer, "successful") != NULL;
 }
 
 int main(int argc, char *argv[]) {
