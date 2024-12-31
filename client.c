@@ -111,47 +111,6 @@ void * on_signal(void * sockfd) {
   }
 }
 
-// int authenticate(int socket) {
-//     char buffer[1024];
-//     char command[10], username[50], password[50];
-//     int choice;
-
-//     printf("1. Register\n");
-//     printf("2. Login\n");
-//     printf("Choose an option (1/2): ");
-//     scanf("%d", &choice);
-//     getchar();
-
-//     if (choice == 1) {
-//         strcpy(command, "REGISTER");
-//     } else if (choice == 2) {
-//         strcpy(command, "LOGIN");
-//     } else {
-//         printf("Invalid choice. Exiting.\n");
-//         return 0;
-//     }
-
-//     printf("Enter username: ");
-//     scanf("%s", username);
-//     printf("Enter password: ");
-//     scanf("%s", password);
-//     getchar();
-
-//     snprintf(buffer, sizeof(buffer), "%s %s %s", command, username, password);
-//     send(socket, buffer, strlen(buffer), 0);
-
-//     int bytes_received = recv(socket, buffer, sizeof(buffer) - 1, 0);
-//     if (bytes_received <= 0) {
-//         printf("Disconnected from server.\n");
-//         return 0;
-//     }
-
-//     buffer[bytes_received] = '\0';
-//     printf("%s", buffer);
-
-//     return strstr(buffer, "successful") != NULL;
-// }
-
 int authenticate(int socket) {
     char buffer[1024];
     char command[10], username[50], password[50];

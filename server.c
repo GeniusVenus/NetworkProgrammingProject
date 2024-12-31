@@ -280,7 +280,7 @@ cleanup:
 
 void update_client_status_in_file(const char *filename, const char *username, int is_online) {
     FILE *file = fopen(filename, "r+");
-    
+
     // If the file doesn't exist, create it
     if (!file) {
         file = fopen(filename, "w+");
@@ -410,7 +410,7 @@ void *handle_client(void *arg) {
         char *password = strtok(NULL, " ");
 
         if (strcmp(command, "REGISTER") == 0) {
-            
+
             if (register_user(username, password)) {
                 int x = initialize_elo(username);
                 snprintf(response, sizeof(response), "Registration successful.\n");
@@ -423,7 +423,7 @@ void *handle_client(void *arg) {
                 snprintf(response, sizeof(response), "Registration failed. Username exists.\n");
             }
         } else if (strcmp(command, "LOGIN") == 0) {
-            
+
             if (validate_login(username, password)) {
                 elo = get_user_elo(username);
                 int x = initialize_elo(username);
@@ -443,8 +443,6 @@ void *handle_client(void *arg) {
     }
 
     while (1) {
-        snprintf(response, sizeof(response), "1. Matchmaking\n2. Logout\nChoose an option (1/2): ");
-        send(client->socket, response, strlen(response), 0);
         bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
         if (bytes_received <= 0) {
             update_client_status_in_file("client_status.log", client->username, 0);
