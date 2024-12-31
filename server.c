@@ -31,54 +31,6 @@ const char *get_username_by_socket(int socket, client_info *clients) {
 
 
 
-// int handle_client(client_info *client) {
-//     char buffer[1024], response[1024];
-//     int bytes_received;
-
-//     while (1) {
-//         bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
-//         if (bytes_received <= 0) {
-//             return -1; // Client disconnected
-//         }
-
-//         buffer[bytes_received] = '\0';
-//         char *command = strtok(buffer, " ");
-//         char *username = strtok(NULL, " ");
-//         char *password = strtok(NULL, " ");
-
-//         if (!command || !username || !password) {
-//             snprintf(response, sizeof(response), "Invalid command. Use REGISTER <username> <password> or LOGIN <username> <password>.\n");
-//             send(client->socket, response, strlen(response), 0);
-//             continue;
-//         }
-
-//         if (strcmp(command, "REGISTER") == 0) {
-//             if (register_user(username, password)) {
-//                 snprintf(response, sizeof(response), "Registration successful.\n");
-//                 strncpy(client->username, username, sizeof(client->username));
-//                 send(client->socket, response, strlen(response), 0);
-//                 return 0; // Authenticated
-//             } else {
-//                 snprintf(response, sizeof(response), "Registration failed. Username already exists.\n");
-//             }
-//         } else if (strcmp(command, "LOGIN") == 0) {
-//             if (validate_login(username, password)) {
-//                 snprintf(response, sizeof(response), "Login successful.\n");
-//                 strncpy(client->username, username, sizeof(client->username));
-//                 send(client->socket, response, strlen(response), 0);
-//                 return 0; // Authenticated
-//             } else {
-//                 snprintf(response, sizeof(response), "Login failed. Invalid credentials.\n");
-//             }
-//         } else {
-//             snprintf(response, sizeof(response), "Unknown command.\n");
-//         }
-
-//         send(client->socket, response, strlen(response), 0);
-//     }
-// }
-// Waiting player conditional variable
-
 // Match player
 int challenging_player = 0;
 int player_is_waiting = 0;
@@ -195,7 +147,6 @@ void matchmaking(client_info *client) {
     pthread_mutex_unlock(&general_mutex);
 }
 
-
 void game_room(int player_one_socket, int player_two_socket) {
     printf("Starting game between Player One (%d) and Player Two (%d).\n", player_one_socket, player_two_socket);
 
@@ -204,17 +155,6 @@ void game_room(int player_one_socket, int player_two_socket) {
     wchar_t **board = create_board();
     char *one_dimension_board = create_od_board();
     initialize_board(board);
-
-    // Notify players of their roles
-    // if (send(player_one_socket, "i-p1", 4, 0) < 0 || send(player_two_socket, "i-p2", 4, 0) < 0) {
-    //     perror("ERROR sending player roles");
-    //     close(player_one_socket);
-    //     close(player_two_socket);
-    //     free_board(board);
-    //     free(one_dimension_board);
-    //     free(move);
-    //     return;
-    // }
 
     if (send(player_one_socket, "i-p1", 4, 0) < 0) {
      perror("ERROR writing to socket");
@@ -249,16 +189,27 @@ void game_room(int player_one_socket, int player_two_socket) {
 
     bool syntax_valid = false;
     bool move_valid = false;
+    print_board(board);
 
     while (1) {
         // Player One's turn
         send(player_one_socket, "i-tm", 4, 0);
         send(player_two_socket, "i-nm", 4, 0);
+        sleep(1);
 
         printf("Waiting for move from Player One (%d)...\n", player_one_socket);
         while (!syntax_valid || !move_valid) {
+            // Check win/draw before reading new move
+            if (check_win_game(board, player_one_socket, player_two_socket)) {
+                goto cleanup;
+            }
+            // if (check_draw_game(board, player_one_socket, player_two_socket)) {
+            //     goto cleanup;
+            // }
             bzero(buffer, 64);
-            if (read(player_one_socket, buffer, sizeof(buffer)) <= 0) {
+
+            ssize_t bytes_read = read(player_one_socket, buffer, sizeof(buffer));
+            if (bytes_read <= 0) {
                 perror("ERROR reading Player One move");
                 goto cleanup;
             }
@@ -266,23 +217,35 @@ void game_room(int player_one_socket, int player_two_socket) {
             fprintf(log_file, "Player One move: %s\n", buffer);
             fflush(log_file);
             syntax_valid = is_syntax_valid(player_one_socket, buffer);
-            translate_to_move(move, buffer);  // Convert buffer to move
-            move_valid = is_move_valid(board, player_one_socket, 1, move); // Validate the move
+            translate_to_move(move, buffer);
+            move_valid = is_move_valid(board, player_one_socket, 1, move);
         }
+
         syntax_valid = false;
         move_valid = false;
-
-        move_piece(board, move);  // Apply Player One's move
+        move_piece(board, move);
         broadcast(board, one_dimension_board, player_one_socket, player_two_socket);
+        print_board(board);
 
         // Player Two's turn
         send(player_one_socket, "i-nm", 4, 0);
         send(player_two_socket, "i-tm", 4, 0);
+        sleep(1);
 
         printf("Waiting for move from Player Two (%d)...\n", player_two_socket);
         while (!syntax_valid || !move_valid) {
+            // Check win/draw before reading new move
+            if (check_win_game(board, player_one_socket, player_two_socket)) {
+                goto cleanup;
+            }
+            // if (check_draw_game(board, player_two_socket, player_two_socket)) {
+            //     goto cleanup;
+            // }
+
             bzero(buffer, 64);
-            if (read(player_two_socket, buffer, sizeof(buffer)) <= 0) {
+
+            ssize_t bytes_read = read(player_two_socket, buffer, sizeof(buffer));
+            if (bytes_read <= 0) {
                 perror("ERROR reading Player Two move");
                 goto cleanup;
             }
@@ -290,14 +253,17 @@ void game_room(int player_one_socket, int player_two_socket) {
             fprintf(log_file, "Player Two move: %s\n", buffer);
             fflush(log_file);
             syntax_valid = is_syntax_valid(player_two_socket, buffer);
-            translate_to_move(move, buffer);  // Convert buffer to move
-            move_valid = is_move_valid(board, player_two_socket, -1, move); // Validate the move
+
+            translate_to_move(move, buffer);
+            move_valid = is_move_valid(board, player_two_socket, -1, move);
         }
+
         syntax_valid = false;
         move_valid = false;
 
-        move_piece(board, move);  // Apply Player Two's move
+        move_piece(board, move);
         broadcast(board, one_dimension_board, player_one_socket, player_two_socket);
+        print_board(board);
         sleep(1);
     }
 
@@ -590,92 +556,3 @@ int main(int argc, char *argv[]) {
     close(sockfd);
     return 0;
 }
-
-
-// int main( int argc, char *argv[] ) {
-//   pthread_t tid[1];
-//   setlocale(LC_ALL, "en_US.UTF-8");
-
-//   int sockfd, client_socket, port_number, client_length;
-//   char buffer[64];
-//   struct sockaddr_in server_address, client;
-//   int  n;
-
-//   // Conditional variable
-//   pthread_cond_init(&player_to_join, NULL);
-//   pthread_mutex_init(&general_mutex, NULL);
-
-//   /* First call to socket() function */
-//   sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-//   if (sockfd < 0) {
-//     perror("ERROR opening socket");
-//     exit(1);
-//   }
-
-//   /* Initialize socket structure */
-//   bzero((char *) &server_address, sizeof(server_address));
-//   port_number = PORT;
-
-//   server_address.sin_family = AF_INET;
-//   server_address.sin_addr.s_addr = INADDR_ANY;
-//   server_address.sin_port = htons(port_number);
-
-//   /* Now bind the host address using bind() call.*/
-//   if (bind(sockfd, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) {
-//       perror("ERROR on binding");
-//       exit(1);
-//    }
-
-//           /* MAX_QUEUE */
-//   listen(sockfd, 20);
-//   printf("Server listening on port %d\n", port_number);
-//   pthread_t threads[MAX_CLIENTS];
-//    while(1) {
-//      client_length = sizeof(client);
-//      // CHECK IF WE'VE A WAITING USER
-
-//      /* Accept actual connection from the client */
-//      client_socket = accept(sockfd, (struct sockaddr *)&client, (unsigned int *)&client_length);
-
-//      if (client_socket < 0) {
-//         perror("ERROR on accept");
-//         exit(1);
-//      }
-
-//      pthread_mutex_lock(&general_mutex);
-//         int i;
-//         for (i = 0; i < MAX_CLIENTS; i++) {
-//             if (clients[i].socket == 0) {
-//                 clients[i].socket = client_socket;
-//                 clients[i].address = client;
-//                 clients[i].index = i;
-//                 pthread_create(&threads[i], NULL, handle_client, &clients[i]);
-//                 break;
-//             }
-//         }
-//         pthread_mutex_unlock(&general_mutex);
-//       printf("– Connection accepted from %d at %d.%d.%d.%d:%d –\n", client_socket, client.sin_addr.s_addr&0xFF, (client.sin_addr.s_addr&0xFF00)>>8, (client.sin_addr.s_addr&0xFF0000)>>16, (client.sin_addr.s_addr&0xFF000000)>>24, client.sin_port);
-
-//      pthread_mutex_lock(&general_mutex); // Unecesary?
-//      // Create thread if we have no user waiting
-//      if (player_is_waiting == 0) {
-//        printf("Connected player, creating new game room...\n");
-//        pthread_create(&tid[0], NULL, &game_room, &client_socket);
-//        pthread_mutex_unlock(&general_mutex); // Unecesary?
-//      }
-//      // If we've a user waiting join that room
-//      else {
-//        // Send user two signal
-//        printf("Connected player, joining game room... %d\n", client_socket);
-//        challenging_player = client_socket;
-//        pthread_mutex_unlock(&general_mutex); // Unecesary?
-//        pthread_cond_signal(&player_to_join);
-//      }
-
-//    }
-
-//    close(sockfd);
-
-//    return 0;
-// }
