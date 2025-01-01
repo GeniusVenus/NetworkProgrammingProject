@@ -39,6 +39,7 @@ typedef struct {
     int is_waiting;
     int is_online;
     int played;
+    int ready;
 } client_info;
 
 extern client_info clients[MAX_CLIENTS];

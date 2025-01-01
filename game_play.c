@@ -596,7 +596,7 @@ bool checkmate(wchar_t **board, wchar_t piece) {
     return !can_king_escape(board, king_x, king_y, king_team);
 }
 
-bool check_win_game(wchar_t **board, int player_one, int player_two) {
+bool check_win_game(wchar_t **board, int player_one, int player_two, int time) {
     bool black_king_alive = is_piece_on_board(board, black_king);
     bool white_king_alive = is_piece_on_board(board, white_king);
 
@@ -605,6 +605,16 @@ bool check_win_game(wchar_t **board, int player_one, int player_two) {
         printf("We have white as the winner\n");
         send(player_one, "i-w", 4, 0);
         send(player_two, "i-l", 4, 0);
+        // * calculate_elo(1, 2, time, 0)
+        printf("TIME IS: %d\n", time);
+        elo_diff result = calculate_elo(player_one, player_two, time, 0);
+        printf("HERE is result of 1: %d and 2 when user 1 win: %d\n", result.elo1, result.elo2);
+        for (int i = 0; i < MAX_CLIENTS; ++ i)
+        {
+          if (clients[i].socket == player_one || clients[i].socket == player_two) {
+            clients[i].ready = 0;
+          }
+        }
         return true;
     }
 
@@ -613,10 +623,118 @@ bool check_win_game(wchar_t **board, int player_one, int player_two) {
         printf("We have black as the winner\n");
         send(player_one, "i-l", 4, 0);
         send(player_two, "i-w", 4, 0);
+        // * calculate_elo(1, 2, time, 1)
+        printf("TIME IS: %d\n", time);
+        elo_diff result = calculate_elo(player_one, player_two, time, 1);
+        printf("HERE is result of 1: %d and 2 when user 2 win: %d\n", result.elo1, result.elo2);
+        for (int i = 0; i < MAX_CLIENTS; ++ i)
+        {
+          if (clients[i].socket == player_one || clients[i].socket == player_two) {
+            clients[i].ready = 0;
+          }
+        }
         return true;
     }
 
     return false; // No winner yet
+}
+
+
+elo_diff calculate_elo(int player_one_socket, int player_two_socket, int time, bool rs) {
+  elo_diff result = {0, 0};
+  result.elo1 = 0;
+  result.elo2 = 0;
+  int elo_1, elo_2;
+
+  printf("Chuan Bi day elo ne!: %d && %d\n", player_one_socket, player_two_socket);
+
+  for (int i = 0; i < MAX_CLIENTS; ++ i)
+  {
+    if (clients[i].socket == player_one_socket) {
+      elo_1 = clients[i].elo;
+      continue;
+    }
+    if (clients[i].socket == player_two_socket) {
+      elo_2 = clients[i].elo;
+      continue;
+    }
+    
+  }
+  printf("Player One Socket: %d, ELO: %d\n", player_one_socket, elo_1);
+  printf("Player Two Socket: %d, ELO: %d\n", player_two_socket, elo_2);
+
+  if (player_one_socket < 0 || player_two_socket < 0) {
+    fprintf(stderr, "Invalid player socket(s): %d, %d\n", player_one_socket, player_two_socket);
+    result.elo1 = 0;
+    result.elo2 = 0;
+    return result;
+}
+
+  if (rs == 0) {
+    if (elo_1 < elo_2) {
+      if (time <= 120) {
+        result.elo2 = -50;
+        result.elo1 = 40;
+      }
+      else {
+        result.elo2 = -40;
+        result.elo1 = 35;
+      }
+    }
+    else if (elo_1 > elo_2) {
+      if (time <= 120) {
+        result.elo2 = -30;
+        result.elo1 = 35;
+      }
+      else {
+        result.elo2 = -25;
+        result.elo1 = 30;
+      }
+    }
+    else {
+      if (time <= 120) {
+        result.elo2 = -30;
+        result.elo1 = 30;
+      }
+      else {
+        result.elo2 = -25;
+        result.elo1 = 25;
+      }
+    }
+  }
+  else {
+    if (elo_1 > elo_2) {
+      if (time <= 120) {
+        result.elo1 = -50;
+        result.elo2 = 40;
+      }
+      else {
+        result.elo1 = -40;
+        result.elo2 = 35;
+      }
+    }
+    else if (elo_1 < elo_2) {
+      if (time <= 120) {
+        result.elo1 = -30;
+        result.elo2 = 35;
+      }
+      else {
+        result.elo1 = -25;
+        result.elo2 = 30;
+      }
+    }
+    else {
+      if (time <= 120) {
+        result.elo1 = -30;
+        result.elo2 = 30;
+      }
+      else {
+        result.elo1 = -25;
+        result.elo2 = 25;
+      }
+    }
+  }
+  return result;
 }
 
 // bool has_legal_moves(wchar_t **board, int team) {
