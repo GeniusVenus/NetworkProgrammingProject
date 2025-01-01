@@ -25,13 +25,14 @@ bool is_piece_on_board(wchar_t **board, wchar_t piece);
 bool checkmate(wchar_t **board, wchar_t piece);
 bool can_king_escape(wchar_t **board, int king_x, int king_y, int king_team);
 bool is_king_in_check(wchar_t **board, int king_x, int king_y, int king_team);
+void reset_player_status(int player_one, int player_two);
 
 typedef struct{
     int elo1;
     int elo2;
 } elo_diff;
-
-elo_diff calculate_elo(int player_one_socket, int player_two_socket, int time, bool rs);
+void calculate_elo_change(int elo_a, int elo_b, int time, int *winner_points, int *loser_points);
+elo_diff calculate_elo(int player_one_socket, int player_two_socket, int time, bool result);
 
 
 #endif

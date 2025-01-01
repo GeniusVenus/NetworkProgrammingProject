@@ -8,6 +8,15 @@ void print_board(wchar_t **board){
   }
 }
 
+void reset_player_status(int player_one, int player_two){
+  for (int i = 0; i < MAX_CLIENTS; ++ i)
+  {
+    if (clients[i].socket == player_one || clients[i].socket == player_two) {
+      clients[i].ready = 0;
+    }
+  }
+}
+
 int getManitud(int origin, int dest) {
   return (abs(origin-dest));
 }
@@ -609,12 +618,7 @@ bool check_win_game(wchar_t **board, int player_one, int player_two, int time) {
         printf("TIME IS: %d\n", time);
         elo_diff result = calculate_elo(player_one, player_two, time, 0);
         printf("HERE is result of 1: %d and 2 when user 1 win: %d\n", result.elo1, result.elo2);
-        for (int i = 0; i < MAX_CLIENTS; ++ i)
-        {
-          if (clients[i].socket == player_one || clients[i].socket == player_two) {
-            clients[i].ready = 0;
-          }
-        }
+        reset_player_status(player_one, player_two);
         return true;
     }
 
@@ -627,114 +631,62 @@ bool check_win_game(wchar_t **board, int player_one, int player_two, int time) {
         printf("TIME IS: %d\n", time);
         elo_diff result = calculate_elo(player_one, player_two, time, 1);
         printf("HERE is result of 1: %d and 2 when user 2 win: %d\n", result.elo1, result.elo2);
-        for (int i = 0; i < MAX_CLIENTS; ++ i)
-        {
-          if (clients[i].socket == player_one || clients[i].socket == player_two) {
-            clients[i].ready = 0;
-          }
-        }
+        reset_player_status(player_one, player_two);
         return true;
     }
 
     return false; // No winner yet
 }
 
-
-elo_diff calculate_elo(int player_one_socket, int player_two_socket, int time, bool rs) {
-  elo_diff result = {0, 0};
-  result.elo1 = 0;
-  result.elo2 = 0;
-  int elo_1, elo_2;
-
-  printf("Chuan Bi day elo ne!: %d && %d\n", player_one_socket, player_two_socket);
-
-  for (int i = 0; i < MAX_CLIENTS; ++ i)
-  {
-    if (clients[i].socket == player_one_socket) {
-      elo_1 = clients[i].elo;
-      continue;
+// Helper function to calculate ELO changes
+void calculate_elo_change(int elo_a, int elo_b, int time, int *winner_points, int *loser_points) {
+    if (elo_a < elo_b) {
+        *winner_points = (time <= 120) ? 40 : 35;
+        *loser_points = (time <= 120) ? -50 : -40;
+    } else if (elo_a > elo_b) {
+        *winner_points = (time <= 120) ? 35 : 30;
+        *loser_points = (time <= 120) ? -30 : -25;
+    } else {
+        *winner_points = (time <= 120) ? 30 : 25;
+        *loser_points = (time <= 120) ? -30 : -25;
     }
-    if (clients[i].socket == player_two_socket) {
-      elo_2 = clients[i].elo;
-      continue;
-    }
-    
-  }
-  printf("Player One Socket: %d, ELO: %d\n", player_one_socket, elo_1);
-  printf("Player Two Socket: %d, ELO: %d\n", player_two_socket, elo_2);
-
-  if (player_one_socket < 0 || player_two_socket < 0) {
-    fprintf(stderr, "Invalid player socket(s): %d, %d\n", player_one_socket, player_two_socket);
-    result.elo1 = 0;
-    result.elo2 = 0;
-    return result;
 }
 
-  if (rs == 0) {
-    if (elo_1 < elo_2) {
-      if (time <= 120) {
-        result.elo2 = -50;
-        result.elo1 = 40;
-      }
-      else {
-        result.elo2 = -40;
-        result.elo1 = 35;
-      }
+elo_diff calculate_elo(int player_one_socket, int player_two_socket, int time, bool result) {
+    elo_diff elo_points = {0, 0};
+    int elo_1 = -1, elo_2 = -1;
+
+    // Retrieve ELO ratings for players
+    for (int i = 0; i < MAX_CLIENTS; ++i) {
+        if (clients[i].socket == player_one_socket) {
+            elo_1 = clients[i].elo;
+        } else if (clients[i].socket == player_two_socket) {
+            elo_2 = clients[i].elo;
+        }
     }
-    else if (elo_1 > elo_2) {
-      if (time <= 120) {
-        result.elo2 = -30;
-        result.elo1 = 35;
-      }
-      else {
-        result.elo2 = -25;
-        result.elo1 = 30;
-      }
+
+    printf("Player One Socket: %d, ELO: %d\n", player_one_socket, elo_1);
+    printf("Player Two Socket: %d, ELO: %d\n", player_two_socket, elo_2);
+
+    // Validate player sockets
+    if (elo_1 < 0 || elo_2 < 0) {
+        fprintf(stderr, "Invalid player socket(s): %d, %d\n", player_one_socket, player_two_socket);
+        return elo_points;
     }
-    else {
-      if (time <= 120) {
-        result.elo2 = -30;
-        result.elo1 = 30;
-      }
-      else {
-        result.elo2 = -25;
-        result.elo1 = 25;
-      }
+
+    int winner_points, loser_points;
+
+    if (result == 0) { // Player One wins
+        calculate_elo_change(elo_1, elo_2, time, &winner_points, &loser_points);
+        elo_points.elo1 = winner_points;
+        elo_points.elo2 = loser_points;
+    } else { // Player Two wins
+        calculate_elo_change(elo_2, elo_1, time, &winner_points, &loser_points);
+        elo_points.elo1 = loser_points;
+        elo_points.elo2 = winner_points;
     }
-  }
-  else {
-    if (elo_1 > elo_2) {
-      if (time <= 120) {
-        result.elo1 = -50;
-        result.elo2 = 40;
-      }
-      else {
-        result.elo1 = -40;
-        result.elo2 = 35;
-      }
-    }
-    else if (elo_1 < elo_2) {
-      if (time <= 120) {
-        result.elo1 = -30;
-        result.elo2 = 35;
-      }
-      else {
-        result.elo1 = -25;
-        result.elo2 = 30;
-      }
-    }
-    else {
-      if (time <= 120) {
-        result.elo1 = -30;
-        result.elo2 = 30;
-      }
-      else {
-        result.elo1 = -25;
-        result.elo2 = 25;
-      }
-    }
-  }
-  return result;
+
+    return elo_points;
 }
 
 // bool has_legal_moves(wchar_t **board, int team) {

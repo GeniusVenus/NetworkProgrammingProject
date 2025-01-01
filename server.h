@@ -45,6 +45,10 @@ typedef struct {
 extern client_info clients[MAX_CLIENTS];
 
 // Function declarations
+void create_log_filename(char *filename, size_t size, const char *username1, const char *username2);
+const char *get_username_by_socket(int socket, client_info *clients);
+void matchmaking(client_info *client);
+void update_client_status_in_file(const char *filename, const char *username, int is_online);
 void *handle_client(void *arg);
 void game_room(int player_one_socket, int player_two_socket);
 void matchmaking(client_info *client);
