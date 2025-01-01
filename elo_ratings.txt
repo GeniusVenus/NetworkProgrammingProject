@@ -2,3 +2,5 @@ hello 1000
 happy 960
 he 1050
 haha 850
+x 1000
+z 1000

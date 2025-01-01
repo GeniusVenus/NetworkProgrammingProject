@@ -1,9 +1,13 @@
 #include "server.h"
 #include <time.h>
 
-pthread_cond_t player_to_join;
 pthread_mutex_t general_mutex;
 client_info clients[MAX_CLIENTS] = {0};
+
+client_info *matchmaking_list[MAX_PLAYERS];
+int list_size = 0;
+pthread_mutex_t list_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t list_cond = PTHREAD_COND_INITIALIZER;
 
 // Function to create the log file name with full date
 void create_log_filename(char *filename, size_t size, const char *username1, const char *username2) {
@@ -31,10 +35,64 @@ const char *get_username_by_socket(int socket, client_info *clients) {
     return "unknown"; // Fallback if username not found
 }
 
+void add_to_list(client_info *client) {
+    // Ensure no duplicate entries
+    for (int i = 0; i < list_size; i++) {
+        if (matchmaking_list[i]->socket == client->socket) {
+            printf("Client %s is already in matchmaking.\n", client->username);
+            return;
+        }
+    }
 
-// Match player
-int challenging_player = 0;
-int player_is_waiting = 0;
+    // Add to the list if space is available
+    if (list_size < MAX_PLAYERS) {
+        matchmaking_list[list_size++] = client;
+        client->ready = 1;
+        client->is_waiting = 1;
+        printf("Client %s added to matchmaking list.\n", client->username);
+    } else {
+        printf("Matchmaking list is full! Client %s cannot join.\n", client->username);
+    }
+}
+
+client_info *find_and_remove_match(client_info *client) {
+    client_info *best_match = NULL;
+    int closest_elo_diff = 10000000;
+
+    for (int i = 0; i < list_size; i++) {
+        client_info *potential_match = matchmaking_list[i];
+
+        if (potential_match->socket != client->socket &&
+            potential_match->is_waiting &&
+            potential_match->ready) {
+
+            int elo_diff = abs(client->elo - potential_match->elo);
+            if (elo_diff < closest_elo_diff && elo_diff <= 100) {
+                best_match = potential_match;
+                closest_elo_diff = elo_diff;
+            }
+        }
+    }
+
+    if (best_match != NULL) {
+        // Remove both the matched player and the client from the list
+        for (int i = 0; i < list_size; i++) {
+            if (matchmaking_list[i] == best_match || matchmaking_list[i] == client) {
+                for (int j = i; j < list_size - 1; j++) {
+                    matchmaking_list[j] = matchmaking_list[j + 1];
+                }
+                list_size--;
+                i--;  // Adjust the index after removal
+            }
+        }
+
+        best_match->is_waiting = 0;
+        best_match->ready = 0;
+    }
+
+    return best_match;
+}
+
 
 void matchmaking(client_info *client) {
     if (client == NULL) {
@@ -43,101 +101,44 @@ void matchmaking(client_info *client) {
     }
 
     printf("Client %s (Elo: %d) entering matchmaking...\n", client->username, client->elo);
-    for (int i = 0; i < MAX_PLAYERS; i++)
-    {
-        if (clients[i].socket == client->socket) {
-                clients[i].ready = 1;
-            }
-    }
-    // Step 1: Try to find a match
-    int opponent_socket;
-    pthread_mutex_lock(&general_mutex);
-    for (int j = 0; j < 5; ++j) {
-        opponent_socket = find_match(client->socket, client->elo);
-        printf("Opponent Socket: %d\n", opponent_socket);
-        if (opponent_socket != -1) {
-            printf("Match found! %s will play against opponent with socket %d.\n", client->username, opponent_socket);
-            break;
+
+    // Step 1: Add the client to the matchmaking list
+    pthread_mutex_lock(&list_mutex);
+    add_to_list(client);
+
+    // Notify other threads that a player has joined
+    pthread_cond_signal(&list_cond);
+    pthread_mutex_unlock(&list_mutex);
+
+    while (1) {
+        pthread_mutex_lock(&list_mutex);
+
+        // Wait until there are at least two players in the list
+        while (list_size < 2) {
+            printf("Waiting for more players...\n");
+            pthread_cond_wait(&list_cond, &list_mutex);
         }
-        sleep(5);
-    }
-    pthread_mutex_unlock(&general_mutex);
 
-    if (opponent_socket != -1) {
-        int user1_elo = client->elo;
-        int user2_elo;
-        for (int i = 0; i < MAX_PLAYERS; i++) {
-            if (clients[i].socket == opponent_socket) {
-                user2_elo = get_user_elo(clients[i].username);
-                break;
-            }
-        }
-         if (user1_elo <= user2_elo) {
-             printf("Client %s is now Player Two.\n", client->username);
-            int player_one_socket = challenging_player;
-            int player_two_socket = client->socket;
+        pthread_mutex_unlock(&list_mutex);
 
-            // Reset waiting state
-            player_is_waiting = 0;
-            challenging_player = -1;
+        // Step 2: Try to find a match
+        pthread_mutex_lock(&list_mutex);
+        client_info *opponent = find_and_remove_match(client);
+        pthread_mutex_unlock(&list_mutex);
 
-            // Signal Player One
-            pthread_cond_signal(&player_to_join);
-            pthread_mutex_unlock(&general_mutex);
+        if (opponent != NULL) {
+            // Step 3: Start the game if a match is found
+            printf("Match found! %s (Elo: %d) will play against %s (Elo: %d).\n",
+                   client->username, client->elo, opponent->username, opponent->elo);
 
-            // Start the game room with Player 1 and Player 2
-            game_room(client->socket, opponent_socket);
+            game_room(client->socket, opponent->socket);
             return;
-        } else {
-            // Opposite assignment when user2_elo > user1_elo
-            // printf("Client %s is Player Two.\n", client->username);
-            // printf("Opponent %d is Player One.\n", opponent_socket);
-
-            // // Start the game room with Player 1 and Player 2
-            // game_room(opponent_socket, client->socket);
-
-            printf("Client %s is now Player Two.\n", client->username);
-            player_is_waiting = 1;
-            challenging_player = client->socket;
-
-            // Wait for another player
-            pthread_cond_wait(&player_to_join, &general_mutex);
         }
-        pthread_mutex_unlock(&general_mutex);
+
+        // Step 4: No match found, retry after a brief delay
+        printf("No suitable match found for %s. Retrying...\n", client->username);
+        sleep(1);
     }
-
-    // Step 2: No match found, fallback to waiting
-    printf("No match found. Client %s will wait.\n", client->username);
-    pthread_mutex_lock(&general_mutex);
-
-    if (player_is_waiting == 0) {
-        // Become Player One
-        printf("Client %s is now Player One.\n", client->username);
-        player_is_waiting = 1;
-        challenging_player = client->socket;
-
-        // Wait for another player
-        pthread_cond_wait(&player_to_join, &general_mutex);
-    } else {
-        // Become Player Two
-        printf("Client %s is now Player Two.\n", client->username);
-        int player_one_socket = challenging_player;
-        int player_two_socket = client->socket;
-
-        // Reset waiting state
-        player_is_waiting = 0;
-        challenging_player = -1;
-
-        // Signal Player One
-        pthread_cond_signal(&player_to_join);
-        pthread_mutex_unlock(&general_mutex);
-
-        // Start the game room
-        game_room(player_one_socket, player_two_socket);
-        return;
-    }
-
-    pthread_mutex_unlock(&general_mutex);
 }
 
 void game_room(int player_one_socket, int player_two_socket) {
@@ -430,7 +431,6 @@ int main(int argc, char *argv[]) {
 
 
     pthread_t client_threads[MAX_CLIENTS];
-    pthread_cond_init(&player_to_join, NULL);
     pthread_mutex_init(&general_mutex, NULL);
 
     // Create socket
