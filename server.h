@@ -21,7 +21,7 @@
 #define PORT 8080
 #define MAX_LINE_LENGTH 256
 #define MAX_USERNAME_LENGTH 50
-#define MAX_CLIENTS 5
+#define MAX_CLIENTS 20
 #define BUFFER_SIZE 1024
 #define ACCOUNT_FILE "account.txt"
 #define MAX_PLAYERS 20
