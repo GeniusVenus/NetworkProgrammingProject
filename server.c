@@ -36,7 +36,6 @@ const char *get_username_by_socket(int socket, client_info *clients) {
 int challenging_player = 0;
 int player_is_waiting = 0;
 
-
 void matchmaking(client_info *client) {
     if (client == NULL) {
         fprintf(stderr, "Error: client_info is NULL.\n");
@@ -74,20 +73,37 @@ void matchmaking(client_info *client) {
             }
         }
          if (user1_elo <= user2_elo) {
-            printf("Client %s is Player One.\n", client->username);
-            printf("Opponent %d is Player Two.\n", opponent_socket);
+             printf("Client %s is now Player Two.\n", client->username);
+            int player_one_socket = challenging_player;
+            int player_two_socket = client->socket;
+
+            // Reset waiting state
+            player_is_waiting = 0;
+            challenging_player = -1;
+
+            // Signal Player One
+            pthread_cond_signal(&player_to_join);
+            pthread_mutex_unlock(&general_mutex);
 
             // Start the game room with Player 1 and Player 2
             game_room(client->socket, opponent_socket);
+            return;
         } else {
             // Opposite assignment when user2_elo > user1_elo
-            printf("Client %s is Player Two.\n", client->username);
-            printf("Opponent %d is Player One.\n", opponent_socket);
+            // printf("Client %s is Player Two.\n", client->username);
+            // printf("Opponent %d is Player One.\n", opponent_socket);
 
-            // Start the game room with Player 1 and Player 2
-            game_room(opponent_socket, client->socket);
+            // // Start the game room with Player 1 and Player 2
+            // game_room(opponent_socket, client->socket);
+
+            printf("Client %s is now Player Two.\n", client->username);
+            player_is_waiting = 1;
+            challenging_player = client->socket;
+
+            // Wait for another player
+            pthread_cond_wait(&player_to_join, &general_mutex);
         }
-        return;
+        pthread_mutex_unlock(&general_mutex);
     }
 
     // Step 2: No match found, fallback to waiting
@@ -126,6 +142,9 @@ void matchmaking(client_info *client) {
 
 void game_room(int player_one_socket, int player_two_socket) {
     printf("Starting game between Player One (%d) and Player Two (%d).\n", player_one_socket, player_two_socket);
+    // if (send(player_two_socket, "game_ready", strlen("game_ready") + 1, 0) < 0) {
+    //     perror("ERROR sending game ready signal");
+    // }
 
     time_t start_time = time(NULL);
     int *move = (int *)malloc(sizeof(int) * 4);
