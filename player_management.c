@@ -80,7 +80,8 @@ void remove_online_player(int socket) {
             clients[i].elo = 0;
             clients[i].is_waiting = 0;
             clients[i].address.sin_family = 0; // Reset the structure
-            clients[i].index = -1;         
+            clients[i].index = -1;  
+            clients[i].ready = 0;       
             printf("Client (socket=%d) removed from online list.\n", socket);
             break;
         }
@@ -98,8 +99,8 @@ int find_match(int socket, int player_elo) {
   // pthread_mutex_lock(&general_mutex);
   for (int i = 0; i < 10; i++) {
       if (clients[i].socket > 0) {
-          printf("Checking client[%d]: socket=%d, is_waiting=%d, elo=%d\n",
-                i, clients[i].socket, clients[i].is_waiting, clients[i].elo);
+          printf("Checking client[%d]: socket=%d, is_waiting=%d, elo=%d\n, ready=%d\n",
+                i, clients[i].socket, clients[i].is_waiting, clients[i].elo, clients[i].ready);
       }
   }
   pthread_mutex_unlock(&general_mutex);
@@ -107,7 +108,7 @@ int find_match(int socket, int player_elo) {
   printf("2\n");
 
   for (int i = 0; i < 15; i++) {
-      if (clients[i].socket != 0 && clients[i].is_waiting && clients[i].socket != socket) {
+      if (clients[i].socket != 0 && clients[i].is_waiting && clients[i].socket != socket && clients[i].ready == 1) {
           int elo_diff = abs(clients[i].elo - player_elo);
           if (elo_diff < closest_elo_diff && elo_diff <= 50) {
               closest_socket = clients[i].socket;
