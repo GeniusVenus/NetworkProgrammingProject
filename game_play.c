@@ -1,5 +1,20 @@
 #include "game_play.h"
 
+void create_result_filename(char *filename, size_t size, const char *username1, const char *username2) {
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+
+    // Format the filename as YYYYMMDD-HHMMSS-username1-username2.log
+    snprintf(filename, size, "results/%04d%02d%02d-%02d%02d%02d--%s-%s.log",
+             tm.tm_year + 1900,  // Year
+             tm.tm_mon + 1,      // Month (tm_mon is 0-based)
+             tm.tm_mday,         // Day
+             tm.tm_hour,         // Hour (24-hour format)
+             tm.tm_min,          // Minute
+             tm.tm_sec,          // Second
+             username1, username2);
+}
+
 void print_board(wchar_t **board){
   for (int i = 0; i < 8; i++) {
     for (int j = 0; j < 8; j++)
@@ -33,7 +48,7 @@ void freeAll(int * piece_team, int * x_moves, int * y_moves) {
 
 bool is_syntax_valid(int player, char * move) {
   // Look for -
-  if (move[2] != '-') { send(player, "e-00", 4, 0); return false; }
+  if (strlen(move) != 6 || move[2] != '-') { send(player, "e-00", 4, 0); return false; }
 
   //First and 3th should be characters
   if (move[0]-'0' < 10) { send(player, "e-01", 4, 0); return false; }
@@ -605,6 +620,39 @@ bool checkmate(wchar_t **board, wchar_t piece) {
     return !can_king_escape(board, king_x, king_y, king_team);
 }
 
+void log_game_result(int player_one, int player_two, bool result, elo_diff elo_points){
+    const char* player_one_name = get_username_by_socket(player_one, clients);
+    const char* player_two_name = get_username_by_socket(player_two, clients);
+
+    char filename[128];
+    create_result_filename(filename, sizeof(filename), player_one_name, player_two_name);
+    FILE *log_file = fopen(filename, "w");
+    if (!log_file) {
+        perror("ERROR opening log file");
+        return;
+    }
+
+    fprintf(log_file, "Game result between %s and %s.\n", player_one_name, player_two_name);
+    fflush(log_file);
+    if(result){
+      fprintf(log_file, "%s win +%d\n", player_one_name, elo_points.elo1);
+      fflush(log_file);
+
+      fprintf(log_file, "%s lose %d\n", player_two_name, elo_points.elo2);
+      fflush(log_file);
+    } else {
+      fprintf(log_file, "%s win +%d\n", player_two_name, elo_points.elo1);
+      fflush(log_file);
+
+      fprintf(log_file, "%s lose %d\n", player_one_name, elo_points.elo2);
+      fflush(log_file);
+    }
+    fclose(log_file);
+
+    update_user_elo(player_one_name, get_user_elo(player_one_name) + elo_points.elo1);
+    update_user_elo(player_two_name, get_user_elo(player_two_name) + elo_points.elo2);
+}
+
 bool check_win_game(wchar_t **board, int player_one, int player_two, int time) {
     bool black_king_alive = is_piece_on_board(board, black_king);
     bool white_king_alive = is_piece_on_board(board, white_king);
@@ -618,6 +666,7 @@ bool check_win_game(wchar_t **board, int player_one, int player_two, int time) {
         printf("TIME IS: %d\n", time);
         elo_diff result = calculate_elo(player_one, player_two, time, 0);
         printf("HERE is result of 1: %d and 2 when user 1 win: %d\n", result.elo1, result.elo2);
+        log_game_result(player_one, player_two, 1, result);
         reset_player_status(player_one, player_two);
         return true;
     }
@@ -631,6 +680,7 @@ bool check_win_game(wchar_t **board, int player_one, int player_two, int time) {
         printf("TIME IS: %d\n", time);
         elo_diff result = calculate_elo(player_one, player_two, time, 1);
         printf("HERE is result of 1: %d and 2 when user 2 win: %d\n", result.elo1, result.elo2);
+        log_game_result(player_one, player_two, 1, result);
         reset_player_status(player_one, player_two);
         return true;
     }

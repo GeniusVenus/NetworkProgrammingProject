@@ -38,7 +38,12 @@
 
 client
 server
+
+logs
+results
+
 .vscode
 
 logs
 results
+*.log

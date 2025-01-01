@@ -36,24 +36,6 @@ const char *get_username_by_socket(int socket, client_info *clients) {
 int challenging_player = 0;
 int player_is_waiting = 0;
 
-void wait_for_game_start(int socket) {
-    char buffer[64];
-    while (1) {
-        bzero(buffer, sizeof(buffer)); // Clear buffer
-        ssize_t bytes_read = recv(socket, buffer, sizeof(buffer) - 1, MSG_DONTWAIT);
-        printf("ByteRead is: %zd\n", bytes_read);
-        printf("HERE is buffer: %s\n", buffer);
-        if (bytes_read > 0) {
-            buffer[bytes_read] = '\0'; // Null-terminate the buffer
-            printf("HERE is buffer: %s\n", buffer);
-            if (strcmp(buffer, "game_ready") == 0) {
-                printf("Client %d received game ready signal. Joining the game.\n", socket);
-                return;
-            }
-        }
-        sleep(1); // Polling delay
-    }
-}
 void matchmaking(client_info *client) {
     if (client == NULL) {
         fprintf(stderr, "Error: client_info is NULL.\n");
