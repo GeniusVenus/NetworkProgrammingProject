@@ -11,11 +11,14 @@ void create_log_filename(char *filename, size_t size, const char *username1, con
     struct tm tm = *localtime(&t);
 
     // Format the filename as YYYYMMDD-username1-username2.log
-    snprintf(filename, size, "logs/%04d%02d%02d-%s-%s.log",
-             tm.tm_year + 1900,  // Year
-             tm.tm_mon + 1,      // Month (tm_mon is 0-based)
-             tm.tm_mday,         // Day
-             username1, username2);
+    snprintf(filename, size, "logs/%04d%02d%02d-%02d%02d%02d--%s-%s.log",
+            tm.tm_year + 1900,  // Year
+            tm.tm_mon + 1,      // Month (tm_mon is 0-based)
+            tm.tm_mday,         // Day
+            tm.tm_hour,         // Hour (24-hour format)
+            tm.tm_min,          // Minute
+            tm.tm_sec,          // Second
+            username1, username2);
 }
 
 
@@ -29,40 +32,9 @@ const char *get_username_by_socket(int socket, client_info *clients) {
 }
 
 
-
-
 // Match player
 int challenging_player = 0;
 int player_is_waiting = 0;
-
-bool emit(int client, char * message, int message_size) {
-  return true;
-}
-
-
-char *invert_board(char *board, int size) {
-    // Allocate memory for the inverted board
-    char *inverted_board = (char *)malloc(size * sizeof(char));
-
-    // Invert the board by reversing the order of elements
-    for (int i = 0; i < 64; i++) {
-        inverted_board[i] = board[size - 1 - i];
-    }
-
-    return inverted_board;
-}
-
-// void broadcast(wchar_t ** board, char * one_dimension_board, int player_one, int player_two) {
-
-//   to_one_dimension_char(board, one_dimension_board);
-
-//   printf("\tSending board to %d and %d size(%lu)\n", player_one, player_two, sizeof(one_dimension_board));
-//   send(player_one, one_dimension_board, 64, 0);
-//   char *inverted_board = invert_board(one_dimension_board);
-//   send(player_two, inverted_board, 64, 0);
-//   printf("\tSent board...\n");
-// }
-
 
 
 void matchmaking(client_info *client) {
@@ -72,7 +44,12 @@ void matchmaking(client_info *client) {
     }
 
     printf("Client %s (Elo: %d) entering matchmaking...\n", client->username, client->elo);
-
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        if (clients[i].socket == client->socket) {
+                clients[i].ready = 1;
+            }
+    }
     // Step 1: Try to find a match
     int opponent_socket;
     pthread_mutex_lock(&general_mutex);
@@ -150,6 +127,7 @@ void matchmaking(client_info *client) {
 void game_room(int player_one_socket, int player_two_socket) {
     printf("Starting game between Player One (%d) and Player Two (%d).\n", player_one_socket, player_two_socket);
 
+    time_t start_time = time(NULL);
     int *move = (int *)malloc(sizeof(int) * 4);
     char buffer[64];
     wchar_t **board = create_board();
@@ -198,14 +176,28 @@ void game_room(int player_one_socket, int player_two_socket) {
         sleep(1);
 
         printf("Waiting for move from Player One (%d)...\n", player_one_socket);
+
+        // Calcute start_time - end_time
+        time_t end_time = time(NULL);
+        double total_time = difftime(end_time, start_time);
+        int total_seconds = (int)total_time;
+        int hours = total_seconds / 3600;
+        int minutes = (total_seconds % 3600) / 60;
+        int seconds = total_seconds % 60;
+        printf("Total match time: %02d:%02d:%02d\n", hours, minutes, seconds);
+        printf("Total match time: %.0f seconds\n", total_time);
+
         while (!syntax_valid || !move_valid) {
             // Check win/draw before reading new move
-            if (check_win_game(board, player_one_socket, player_two_socket)) {
+            if (check_win_game(board, player_one_socket, player_two_socket, total_seconds)) {
                 goto cleanup;
             }
+            sleep(1);
+
             // if (check_draw_game(board, player_one_socket, player_two_socket)) {
             //     goto cleanup;
             // }
+
             bzero(buffer, 64);
 
             ssize_t bytes_read = read(player_one_socket, buffer, sizeof(buffer));
@@ -214,9 +206,9 @@ void game_room(int player_one_socket, int player_two_socket) {
                 goto cleanup;
             }
             printf("Player One move: %s\n", buffer);
+            syntax_valid = is_syntax_valid(player_one_socket, buffer);
             fprintf(log_file, "Player One move: %s\n", buffer);
             fflush(log_file);
-            syntax_valid = is_syntax_valid(player_one_socket, buffer);
             translate_to_move(move, buffer);
             move_valid = is_move_valid(board, player_one_socket, 1, move);
         }
@@ -234,10 +226,22 @@ void game_room(int player_one_socket, int player_two_socket) {
 
         printf("Waiting for move from Player Two (%d)...\n", player_two_socket);
         while (!syntax_valid || !move_valid) {
+            time_t end_time = time(NULL);
+            // Calculate total duration
+            double total_time = difftime(end_time, start_time);
+            int total_seconds = (int)total_time;
+            int hours = total_seconds / 3600;
+            int minutes = (total_seconds % 3600) / 60;
+            int seconds = total_seconds % 60;
+            printf("Total match time: %02d:%02d:%02d\n", hours, minutes, seconds);
+            printf("Total match time: %.0f seconds\n", total_time);
+
             // Check win/draw before reading new move
-            if (check_win_game(board, player_one_socket, player_two_socket)) {
+            if (check_win_game(board, player_one_socket, player_two_socket, total_seconds)) {
                 goto cleanup;
             }
+            sleep(1);
+
             // if (check_draw_game(board, player_two_socket, player_two_socket)) {
             //     goto cleanup;
             // }
@@ -258,13 +262,13 @@ void game_room(int player_one_socket, int player_two_socket) {
             move_valid = is_move_valid(board, player_two_socket, -1, move);
         }
 
+
         syntax_valid = false;
         move_valid = false;
 
         move_piece(board, move);
         broadcast(board, one_dimension_board, player_one_socket, player_two_socket);
         print_board(board);
-        sleep(1);
     }
 
 cleanup:
@@ -274,8 +278,6 @@ cleanup:
     if (log_file) {
         fclose(log_file);  // Close the file properly
     }
-    close(player_one_socket);
-    close(player_two_socket);
 }
 
 void update_client_status_in_file(const char *filename, const char *username, int is_online) {
@@ -313,80 +315,8 @@ void update_client_status_in_file(const char *filename, const char *username, in
         }
     }
 
-    // If user not found, append them to the file
-    if (!found) {
-        fseek(file, 0, SEEK_END); // Move to the end of the file
-        fprintf(file, "%s %d\n", username, is_online);
-        fflush(file);
-    }
-
     fclose(file);
 }
-
-// void *handle_client(void *arg) {
-//     client_info *client = (client_info *)arg;
-//     char buffer[1024], response[1024];
-//     int bytes_received;
-//     int elo = 1000; // Default Elo for new users
-
-//     // Authentication phase
-//     while (1) {
-//         bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
-//         if (bytes_received <= 0) {
-//             // client->is_online = 0;
-//             update_client_status_in_file("client_status.log", client->username, 0);
-//             printf("Client disconnected during authentication.\n");
-//             close(client->socket);
-//             return NULL;
-//         }
-
-//         buffer[bytes_received] = '\0';
-//         char *command = strtok(buffer, " ");
-//         char *username = strtok(NULL, " ");
-//         char *password = strtok(NULL, " ");
-
-//         if (strcmp(command, "REGISTER") == 0) {
-//             if (register_user(username, password)) {
-//                 int x = initialize_elo(username);
-//                 snprintf(response, sizeof(response), "Registration successful.\n");
-//                 strncpy(client->username, username, sizeof(client->username));
-//                 add_online_player(client->socket, username, elo, 1); // Add player with default Elo
-//                 update_client_status_in_file("client_status.log", username, 1);
-//                 send(client->socket, response, strlen(response), 0);
-//                 break;
-//             } else {
-//                 snprintf(response, sizeof(response), "Registration failed. Username exists.\n");
-//             }
-//         } else if (strcmp(command, "LOGIN") == 0) {
-//             if (validate_login(username, password)) {
-//                 elo = get_user_elo(username); // Fetch Elo from database or file
-//                 int x = initialize_elo(username);
-//                 snprintf(response, sizeof(response), "Login successful.\n");
-//                 strncpy(client->username, username, sizeof(client->username));
-//                 update_client_status_in_file("client_status.log", username, 1);
-//                 add_online_player(client->socket, username, elo, 1);
-//                 send(client->socket, response, strlen(response), 0);
-//                 break;
-//             } else {
-//                 snprintf(response, sizeof(response), "Login failed. Invalid credentials.\n");
-//             }
-//         } else {
-//             snprintf(response, sizeof(response), "Invalid command. Use REGISTER or LOGIN.\n");
-//         }
-//         send(client->socket, response, strlen(response), 0);
-//     }
-
-//     printf("Client %s authenticated with Elo %d.\n", client->username, elo);
-
-//     // Enter matchmaking
-//     matchmaking(client);
-
-//     // Cleanup when the client disconnects
-//     remove_online_player(client->socket);
-//     close(client->socket);
-
-//     return NULL;
-// }
 
 
 void *handle_client(void *arg) {
@@ -398,7 +328,8 @@ void *handle_client(void *arg) {
     while (1) {
         bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
         if (bytes_received <= 0) {
-            update_client_status_in_file("client_status.log", client->username, 0);
+            printf("HEEHEHEHHEHE: %s\n", client->username);
+            remove_online_player(client->socket);
             printf("Client disconnected during authentication.\n");
             close(client->socket);
             return NULL;
@@ -416,7 +347,7 @@ void *handle_client(void *arg) {
                 snprintf(response, sizeof(response), "Registration successful.\n");
                 strncpy(client->username, username, sizeof(client->username));
                 add_online_player(client->socket, username, elo, 1);
-                update_client_status_in_file("client_status.log", username, 1);
+                // update_client_status_in_file("client_status.log", username, 1);
                 send(client->socket, response, strlen(response), 0);
                 break;
             } else {
@@ -429,7 +360,7 @@ void *handle_client(void *arg) {
                 int x = initialize_elo(username);
                 snprintf(response, sizeof(response), "Login successful.\n");
                 strncpy(client->username, username, sizeof(client->username));
-                update_client_status_in_file("client_status.log", username, 1);
+                // update_client_status_in_file("client_status.log", username, 1);
                 add_online_player(client->socket, username, elo, 1);
                 send(client->socket, response, strlen(response), 0);
                 break;
@@ -471,18 +402,6 @@ void *handle_client(void *arg) {
         }
     }
 }
-
-
-int is_duplicate_socket(int socket) {
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (clients[i].socket == socket) {
-            return 1; // Found a duplicate
-        }
-    }
-    return 0; // No duplicates
-}
-
-
 
 int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "en_US.UTF-8");
