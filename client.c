@@ -13,6 +13,7 @@
 #define RED   "\x1B[31m"
 #define RESET "\x1B[0m"
 #define GREEN  "\x1B[32m"
+#define YELLOW "\x1B[33m"
 
 void * on_signal(void * sockfd) {
   char buffer[64];
@@ -36,6 +37,23 @@ void * on_signal(void * sockfd) {
         }
         if (buffer[2] == 'n') {
           printf("\nWaiting for opponent...\n");
+        }
+        if (buffer[2] == 'l') {
+          printf(RED "\nYou lose...\n" RESET);
+          // if (!rematch(sockfd)) {
+          //   printf("Rematch not accepted. Exiting.\n");
+          //   close(sockfd);
+          // }
+        }
+        if (buffer[2] == 'w'){
+          printf(GREEN "\nYou win...\n" RESET);
+        }
+        if (buffer[2] == 'd'){
+          printf(YELLOW"\nDraw...\n" RESET);
+          // if (!rematch(sockfd)) {
+          //   printf("Rematch not accepted. Exiting.\n");
+          //   close(sockfd);
+          // }
         }
         if (buffer[2] == 'p') {
           *player = atoi(&buffer[3]);
@@ -85,7 +103,6 @@ void * on_signal(void * sockfd) {
       if (*player == 1) {
         print_board_buff(buffer);
       } else {
-        printf("%s: %d", "Here:", *player);
         print_board_buff_inverted(buffer);
       }
     }
@@ -99,115 +116,184 @@ int authenticate(int socket) {
     char command[10], username[50], password[50];
     int choice;
 
-    printf("1. Register\n");
-    printf("2. Login\n");
-    printf("Choose an option (1/2): ");
-    scanf("%d", &choice);
-    getchar();
+    while (1) {
+        printf("1. Register\n");
+        printf("2. Login\n");
+        printf("3. Exit\n");
+        printf("Choose an option (1/2/3): ");
+        scanf("%d", &choice);
+        getchar();
 
-    if (choice == 1) {
-        strcpy(command, "REGISTER");
-    } else if (choice == 2) {
-        strcpy(command, "LOGIN");
-    } else {
-        printf("Invalid choice. Exiting.\n");
-        return 0;
+        if (choice == 1) {
+            strcpy(command, "REGISTER");
+        } else if (choice == 2) {
+            strcpy(command, "LOGIN");
+        } else if (choice == 3) {
+            printf("Exiting client.\n");
+            return 0; // Exit the client application
+        } else {
+            printf("Invalid choice. Try again.\n");
+            continue;
+        }
+
+        printf("Enter username: ");
+        scanf("%s", username);
+        printf("Enter password: ");
+        scanf("%s", password);
+        getchar();
+
+        snprintf(buffer, sizeof(buffer), "%s %s %s", command, username, password);
+        send(socket, buffer, strlen(buffer), 0);
+
+        int bytes_received = recv(socket, buffer, sizeof(buffer) - 1, 0);
+        if (bytes_received <= 0) {
+            printf("Disconnected from server.\n");
+            return 0;
+        }
+
+        buffer[bytes_received] = '\0';
+        printf("%s", buffer);
+
+        // Return 1 for successful authentication, 0 for logout or failure
+        if (strstr(buffer, "successful")) {
+            return 1;
+        } else if (strstr(buffer, "logged out")) {
+            return 0; // Logout case
+        }
     }
+}
 
-    printf("Enter username: ");
-    scanf("%s", username);
-    printf("Enter password: ");
-    scanf("%s", password);
-    getchar();
+int rematch(int socket){
+  char buffer[1024];
+  char command[20];
+  int choice;
+  printf("\n Send rematch request? (1 for YES, 0 for NO)");
+  scanf("%d", &choice);
+  if(choice == 0) strcpy(command, "REMATCH");
+  else strcpy(command, "NOT_REMATCH");
 
-    snprintf(buffer, sizeof(buffer), "%s %s %s", command, username, password);
-    send(socket, buffer, strlen(buffer), 0);
+  snprintf(buffer, sizeof(buffer), "%s %s %s", command);
+  send(socket, buffer, strlen(buffer), 0);
 
-    int bytes_received = recv(socket, buffer, sizeof(buffer) - 1, 0);
-    if (bytes_received <= 0) {
-        printf("Disconnected from server.\n");
-        return 0;
-    }
+  int bytes_received = recv(socket, buffer, sizeof(buffer) - 1, 0);
+  if (bytes_received <= 0) {
+      printf("Disconnected from server.\n");
+      return 0;
+  }
 
-    buffer[bytes_received] = '\0';
-    printf("%s", buffer);
+  buffer[bytes_received] = '\0';
+  printf("%s", buffer);
 
-    return strstr(buffer, "successful") != NULL;
+  return strstr(buffer, "successful") != NULL;
 }
 
 int main(int argc, char *argv[]) {
-   int sockfd, portno, n;
-   struct sockaddr_in serv_addr;
-   struct hostent * server;
+    int sockfd, portno, n;
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
 
-   setlocale(LC_ALL, "en_US.UTF-8");
-   char buffer[64];
+    setlocale(LC_ALL, "en_US.UTF-8");
+    char buffer[1024];
 
-   if (argv[2] == NULL) {
-     portno = 80;
-   } else {
-     portno = atoi(argv[2]);
-   }
-
-   printf("Connecting to %s:%d\n", argv[1], portno);
-
-   /* Create a socket point */
-   sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-   if (sockfd < 0) {
-      perror("ERROR opening socket");
-      exit(1);
-   }
-
-   server = gethostbyname(argv[1]);
-
-   if (server == NULL) {
-      fprintf(stderr,"ERROR, no such host\n");
-      exit(0);
-   }
-
-   bzero((char *) &serv_addr, sizeof(serv_addr));
-   serv_addr.sin_family = AF_INET;
-   bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
-   serv_addr.sin_port = htons(portno);
-
-   /* Now connect to the server */
-   if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-      perror("ERROR connecting");
-      exit(1);
-   }
-
-   printf("Connected to server.\n");
-
-    if (!authenticate(sockfd)) {
-        printf("Authentication failed. Exiting.\n");
-        close(sockfd);
-        return 1;
+    if (argv[2] == NULL) {
+        portno = 80;
+    } else {
+        portno = atoi(argv[2]);
     }
 
-    printf("Authentication successful. Let's play!\n");
+    printf("Connecting to %s:%d\n", argv[1], portno);
 
-   /* Now ask for a message from the user, this message
-      * will be read by server
-   */
-
-   pthread_t tid[1];
-
-   // Response thread
-   pthread_create(&tid[0], NULL, &on_signal, &sockfd);
-
-   while (1) {
-     bzero(buffer, 64);
-     fgets(buffer, 64, stdin);
-
-     /* Send message to the server */
-     n = write(sockfd, buffer, strlen(buffer));
-
-     if (n < 0) {
-        perror("ERROR writing to socket");
+    // Create a socket
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("ERROR opening socket");
         exit(1);
-     }
-   }
+    }
 
-   return 0;
+    server = gethostbyname(argv[1]);
+    if (server == NULL) {
+        fprintf(stderr, "ERROR, no such host\n");
+        exit(0);
+    }
+
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+    serv_addr.sin_port = htons(portno);
+
+    // Connect to the server
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("ERROR connecting");
+        exit(1);
+    }
+
+    printf("Connected to server.\n");
+
+    while (1) {
+        // Authenticate the user
+        if (!authenticate(sockfd)) {
+            printf("Exiting client...\n");
+            close(sockfd);
+            return 0; // Exit the application if authentication fails or user logs out
+        }
+
+        printf("Authentication successful.\n");
+        char input[10];
+        int choice;
+        while (1) {
+          printf("1. Matchmaking\n");
+          printf("2. Logout\n");
+          printf("Choose an option (1/2): ");
+          char input[10];
+          int choice;
+
+          fgets(input, sizeof(input), stdin);
+          choice = atoi(input);
+
+          if (choice == 1) {
+              snprintf(buffer, sizeof(buffer), "1");
+              send(sockfd, buffer, strlen(buffer), 0);
+              printf("Entering matchmaking...\n");
+              pthread_t tid[1];
+
+              pthread_create(&tid[0], NULL, &on_signal, &sockfd);
+
+              while (1) {
+                  bzero(buffer, 64);
+                  fgets(buffer, 64, stdin);
+                  int n = write(sockfd, buffer, strlen(buffer));
+                  if (n < 0) {
+                      perror("ERROR writing to socket");
+                      exit(1);
+                  }
+              }
+
+              return 0;
+          } else if (choice == 2) {
+              snprintf(buffer, sizeof(buffer), "2");
+              send(sockfd, buffer, strlen(buffer), 0);
+
+              int bytes_received = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+              if (bytes_received <= 0) {
+                  printf("Disconnected from server.\n");
+                  close(sockfd);
+                  return 0;
+              }
+
+              buffer[bytes_received] = '\0';
+              printf("%s\n", buffer);
+
+              if (strstr(buffer, "Logging out")) {
+                  printf("Logged out successfully.\n");
+                  return 0;
+              }
+          } else {
+              printf("Invalid choice. Try again.\n");
+          }
+      }
+
+    }
+
+    close(sockfd);
+    return 0;
 }

@@ -31,3 +31,14 @@
 # Debug files
 *.dSYM/
 *.su
+
+*.exe
+*.out
+*.bin
+
+client
+server
+.vscode
+
+logs
+results

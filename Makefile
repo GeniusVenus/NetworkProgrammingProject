@@ -2,7 +2,7 @@
 
 CC = gcc
 CFLAGS = -pthread -Wall -Wextra -O2
-SERVER_SRC = server.c board.c
+SERVER_SRC = server.c board.c auth.c player_management.c game_play.c
 SERVER_OBJ = $(SERVER_SRC:.c=.o)
 CLIENT_SRC = client.c
 CLIENT_OBJ = $(CLIENT_SRC:.c=.o)

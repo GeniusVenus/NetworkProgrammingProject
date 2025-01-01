@@ -1,0 +1,11 @@
+#ifndef PLAYER_MANAGEMENT_H
+#define PLAYER_MANAGEMENT_H
+
+#include "server.h"
+
+void add_online_player(int socket, const char *username, int elo, int is_waiting);
+void remove_online_player(int socket);
+int find_match(int socket, int player_elo);
+// void update_client_status_in_file(const char *filename, const char *username, int is_online);
+
+#endif
