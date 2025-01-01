@@ -4,6 +4,7 @@
 #include "server.h"
 #include "board.h"
 
+void print_board(wchar_t **board);
 bool is_syntax_valid(int player, char *move);
 bool is_move_valid(wchar_t **board, int player, int team, int *move);
 void move_piece(wchar_t **board, int *move);

@@ -5,7 +5,7 @@
 
 #include <netdb.h>
 #include <netinet/in.h>
-
+#include <stdbool.h>
 #include <string.h>
 
 #include "board.c"
@@ -14,39 +14,128 @@
 #define RESET "\x1B[0m"
 #define GREEN  "\x1B[32m"
 #define YELLOW "\x1B[33m"
+char input_buffer[1024]; 
+bool isPrint = true;
+bool isIngame = false;
+char menu_buffer[1024];
+char challenge_buffer = '#';
+pthread_mutex_t input_mutex = PTHREAD_MUTEX_INITIALIZER;
+char challenge_response = '\0';
+void *get_input(void *sockfd_ptr) {
+    while (1) {
+      pthread_mutex_lock(&input_mutex);
+        fgets(input_buffer, sizeof(input_buffer), stdin);  // Non-blocking input
 
+        // Remove newline character at the end of the input
+        input_buffer[strcspn(input_buffer, "\n")] = '\0';
+        if(input_buffer[0] <= '9' && input_buffer[0]>='0')
+        strcpy(menu_buffer, input_buffer);
+        if(input_buffer[0] == 'y' || input_buffer[0] == 'Y' || input_buffer[0] == 'n' || input_buffer[0] == 'N')
+          challenge_buffer = input_buffer[0];
+      pthread_mutex_unlock(&input_mutex);
+        // Sleep for a brief moment to prevent busy-waiting
+        usleep(100000);  // Sleep for 100 milliseconds
+    }
+}
+void *send_moves(void *sockfd_ptr) {
+    int socket = *(int *)sockfd_ptr; // Extract the socket file descriptor
+    char move[64]; // Buffer to store the move to send to the server
+
+    while (1) {
+        // Only operate if the game is in progress
+        if (isIngame) {
+          pthread_mutex_lock(&input_mutex);
+            // Check if there's input in the input_buffer
+            if (strlen(input_buffer) > 0) {
+                // Copy the move from input_buffer
+                strncpy(move, input_buffer, sizeof(move) - 1);
+                move[sizeof(move) - 1] = '\0'; // Ensure null-termination
+
+                // Clear the input buffer
+                memset(input_buffer, 0, sizeof(input_buffer));
+          pthread_mutex_unlock(&input_mutex);
+                // Send the move to the server
+                if (send(socket, move, strlen(move), 0) < 0) {
+                    perror("ERROR sending move to server");
+                    exit(1);
+                }
+
+                printf("Move sent: %s\n", move);
+            }
+        }
+
+        // Sleep briefly to avoid busy-waiting
+        usleep(100000); // Sleep for 100 milliseconds
+    }
+
+    return NULL; // Thread cleanup
+}
 void * on_signal(void * sockfd) {
-  char buffer[64];
+  char buffer[256];
   int n;
   int socket = *(int *)sockfd;
   int * player = (int *)malloc(sizeof(int *));
-
   while (1) {
-    bzero(buffer, 64);
-    n = read(socket, buffer, 64);
+    bzero(buffer, 256);
+    n = read(socket, buffer, 256);
 
     if (n < 0) {
        perror("ERROR reading from socket");
        exit(1);
     }
+     if (strstr(buffer, "Challenge from")) {
+            printf("\n%s\n", buffer);
 
+
+            // Wait for the user to respond to the challenge (Non-blocking)
+            printf("\nDo you accept the challenge? (y/n): \n");
+            while (challenge_response == '\0') {
+                // Check the input_buffer for a response asynchronously
+                if (challenge_buffer != '#') {
+                    challenge_response = challenge_buffer; // Get the first character of input 
+                }
+                usleep(100000); // Sleep to prevent busy-waiting
+            }
+            printf("\n Challenge Response: %c \n", challenge_response);
+            send(socket, &challenge_response, sizeof(challenge_response), 0);
+
+            if (challenge_response == 'y' || challenge_response == 'Y') {
+                printf("\nGame starting...\n");
+                isIngame = true;
+            } else {
+                printf("\nYou declined the challenge.\n");
+            }
+            bzero(buffer, 256);
+            memset(input_buffer, 0, sizeof(input_buffer));
+            challenge_buffer = '#';
+	    challenge_response == '\0';
+            continue;
+        }
     if (buffer[0] == 'i' || buffer[0] == 'e' || buffer[0] == '\0') {
       if (buffer[0] == 'i') {
         if (buffer[2] == 't') {
+          isIngame = true;
           printf("\nMake your move: \n");
         }
         if (buffer[2] == 'n') {
+          isIngame = true;
           printf("\nWaiting for opponent...\n");
         }
         if (buffer[2] == 'l') {
+          system("clear");
           printf(RED "\nYou lose...\n" RESET);
+          isIngame = false;
+          isPrint = true;
           // if (!rematch(sockfd)) {
           //   printf("Rematch not accepted. Exiting.\n");
           //   close(sockfd);
           // }
         }
         if (buffer[2] == 'w'){
+          system("clear");
           printf(GREEN "\nYou win...\n" RESET);
+          isIngame = false;
+          isPrint = true;
         }
         if (buffer[2] == 'd'){
           printf(YELLOW"\nDraw...\n" RESET);
@@ -107,7 +196,7 @@ void * on_signal(void * sockfd) {
       }
     }
 
-    bzero(buffer, 64);
+    bzero(buffer, 256);
   }
 }
 
@@ -162,6 +251,7 @@ int authenticate(int socket) {
         }
     }
 }
+
 
 int rematch(int socket){
   char buffer[1024];
@@ -228,7 +318,6 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Connected to server.\n");
-
     while (1) {
         // Authenticate the user
         if (!authenticate(sockfd)) {
@@ -240,39 +329,61 @@ int main(int argc, char *argv[]) {
         printf("Authentication successful.\n");
         char input[10];
         int choice;
+        pthread_t tid[1];
+        pthread_create(&tid[0], NULL, &on_signal, &sockfd);
+        pthread_t input_thread;
+        pthread_create(&input_thread, NULL, &get_input, &sockfd);
+        pthread_t send_moves_thread;
+        pthread_create(&send_moves_thread, NULL, &send_moves, &sockfd);
         while (1) {
-          printf("1. Matchmaking\n");
-          printf("2. Logout\n");
-          printf("Choose an option (1/2): ");
+          if(isPrint)
+          {
+            printf("1. Matchmaking\n");
+            printf("2. Online Players\n");
+            printf("3. Send Challenge Request\n");
+            printf("4. Logout\n");
+            printf("Choose an option (1/2/3/4): \n");
+            isPrint = false;
+          }
           char input[10];
-          int choice;
 
-          fgets(input, sizeof(input), stdin);
-          choice = atoi(input);
+          if (strlen(menu_buffer) > 0 && !isIngame) {
+            int choice = atoi(menu_buffer);
+            memset(input_buffer, 0, sizeof(input_buffer));
+            memset(menu_buffer, 0, sizeof(menu_buffer));
+            if (choice == 1) {
+                snprintf(buffer, sizeof(buffer), "1");
+                send(sockfd, buffer, strlen(buffer), 0);
+                printf("Entering matchmaking...\n");
 
-          if (choice == 1) {
-              snprintf(buffer, sizeof(buffer), "1");
-              send(sockfd, buffer, strlen(buffer), 0);
-              printf("Entering matchmaking...\n");
-              pthread_t tid[1];
-
-              pthread_create(&tid[0], NULL, &on_signal, &sockfd);
-
-              while (1) {
-                  bzero(buffer, 64);
-                  fgets(buffer, 64, stdin);
-                  int n = write(sockfd, buffer, strlen(buffer));
-                  if (n < 0) {
-                      perror("ERROR writing to socket");
-                      exit(1);
-                  }
-              }
-
-              return 0;
-          } else if (choice == 2) {
+            }  else if (choice == 2) {
               snprintf(buffer, sizeof(buffer), "2");
               send(sockfd, buffer, strlen(buffer), 0);
 
+              // Receive and print the list of online players
+              int bytes_received = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+              if (bytes_received <= 0) {
+                  printf("Disconnected from server.\n");
+                  close(sockfd);
+                  return 0;
+              }
+
+              buffer[bytes_received] = '\0';
+              printf("Online Players:\n%s\n", buffer);
+              isPrint = true;
+          }
+          else if (choice == 3) {
+              char target_username[50];
+              printf("Enter the username of the player to challenge: ");
+              fgets(target_username, sizeof(target_username), stdin);
+              target_username[strcspn(target_username, "\n")] = '\0'; // Remove newline
+
+              // Send choice and username to the server
+              snprintf(buffer, sizeof(buffer), "3");
+              send(sockfd, buffer, strlen(buffer), 0);
+              send(sockfd, target_username, strlen(target_username) + 1, 0);
+
+              // Receive response from the server
               int bytes_received = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
               if (bytes_received <= 0) {
                   printf("Disconnected from server.\n");
@@ -282,13 +393,34 @@ int main(int argc, char *argv[]) {
 
               buffer[bytes_received] = '\0';
               printf("%s\n", buffer);
-
-              if (strstr(buffer, "Logging out")) {
-                  printf("Logged out successfully.\n");
-                  return 0;
+              if(strstr(buffer, "Game start")){
+                isIngame = true;
               }
-          } else {
-              printf("Invalid choice. Try again.\n");
+              else {
+                isPrint = true;
+              }
+          }
+          else if (choice == 4) {
+                snprintf(buffer, sizeof(buffer), "4");
+                send(sockfd, buffer, strlen(buffer), 0);
+
+                int bytes_received = recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+                if (bytes_received <= 0) {
+                    printf("Disconnected from server.\n");
+                    close(sockfd);
+                    return 0;
+                }
+
+                buffer[bytes_received] = '\0';
+                printf("%s\n", buffer);
+
+                if (strstr(buffer, "Logging out")) {
+                    printf("Logged out successfully.\n");
+                    return 0;
+                }
+            } else {
+                printf("Invalid choice. Try again.\n");
+            }
           }
       }
 
@@ -297,3 +429,4 @@ int main(int argc, char *argv[]) {
     close(sockfd);
     return 0;
 }
+

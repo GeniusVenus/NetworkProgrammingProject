@@ -48,7 +48,6 @@ void freeAll(int * piece_team, int * x_moves, int * y_moves) {
 
 bool is_syntax_valid(int player, char * move) {
   // Look for -
-  if (strlen(move) != 6 || move[2] != '-') { send(player, "e-00", 4, 0); return false; }
 
   //First and 3th should be characters
   if (move[0]-'0' < 10) { send(player, "e-01", 4, 0); return false; }

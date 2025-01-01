@@ -1,4 +1,4 @@
-hello 1000
-happy 960
+hello 950
+happy 1000
 he 1050
 haha 850

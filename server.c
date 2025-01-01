@@ -387,11 +387,11 @@ void *handle_client(void *arg) {
                 snprintf(response, sizeof(response), "Login failed. Invalid credentials.\n");
             }
         } else {
-            snprintf(response, sizeof(response), "Invalid command. Use REGISTER or LOGIN.\n");
+            snprintf(response, sizeof(response), "Not a valid command. Use REGISTER or LOGIN.\n");
         }
         send(client->socket, response, strlen(response), 0);
     }
-
+    sleep(1);
     while (1) {
         bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
         if (bytes_received <= 0) {
@@ -400,25 +400,99 @@ void *handle_client(void *arg) {
             close(client->socket);
             return NULL;
         }
+	printf("Buffer: %s\n", buffer);
 
         buffer[bytes_received] = '\0';
         int choice = atoi(buffer);
-
+	printf("Choice: %d, Buffer: %s\n", choice, buffer);
         if (choice == 1) {
             // Enter matchmaking
             matchmaking(client);
-        } else if (choice == 2) {
+        }else if (choice == 2){
+            char online_clients[1024] = "";
+            pthread_mutex_lock(&general_mutex);
+
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (clients[i].is_online) {
+                    strcat(online_clients, clients[i].username);
+                    strcat(online_clients, "\n");
+                }
+            }
+	    printf("List: %s", online_clients);
+            pthread_mutex_unlock(&general_mutex);
+            
+            if (send(client->socket, online_clients, strlen(online_clients) + 1, 0) <= 0) {
+                perror("Failed to send online clients list");
+            }
+        } else if(choice == 3){
+            char target_username[50];
+            int found = 0;
+
+            // Receive the target username
+            if (recv(client->socket, target_username, sizeof(target_username), 0) <= 0) {
+                perror("Failed to receive target username");
+                break;
+            }
+            printf("%s\n", target_username);
+            pthread_mutex_lock(&general_mutex);
+
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (clients[i].is_online && strcmp(clients[i].username, target_username) == 0) {
+                    // Notify the target client about the challenge
+                    char challenge_msg[256];
+                    snprintf(challenge_msg, sizeof(challenge_msg), "Challenge from %s. Accept? (y/n):", client->username);
+                    printf("%s\n", challenge_msg);
+                    if (send(clients[i].socket, challenge_msg, strlen(challenge_msg) + 1, 0) <= 0) {
+                        perror("Failed to send challenge notification");
+                    } else {
+                        // Wait for response
+                        char response;
+                        printf("What\n");
+                        if (recv(clients[i].socket, &response, sizeof(response), 0) > 0 && (response == 'y' || response == 'Y')) {
+                            // Notify both players of game start
+                            char game_start_msg[128];
+                            snprintf(game_start_msg, sizeof(game_start_msg), "Game starting with %s\n", target_username);
+
+                            if (send(client->socket, game_start_msg, strlen(game_start_msg) + 1, 0) <= 0) {
+                                perror("Failed to notify challenger");
+                            }
+                            snprintf(game_start_msg, sizeof(game_start_msg), "Game starting with %s\n", client->username);
+                            if (send(clients[i].socket, game_start_msg, strlen(game_start_msg) + 1, 0) <= 0) {
+                                perror("Failed to notify target client");
+                            }
+                            game_room(clients[i].socket, client->socket);
+                        } else {
+                            // Notify challenger that the target declined
+                            char decline_msg[64];
+                            snprintf(decline_msg, sizeof(decline_msg), "%s declined your challenge.\n", target_username);
+                            if (send(client->socket, decline_msg, strlen(decline_msg) + 1, 0) <= 0) {
+                                perror("Failed to notify challenger of decline");
+                            }
+                        }
+                    }
+                    found = 1;
+                }
+            }
+
+            pthread_mutex_unlock(&general_mutex);
+
+            // Notify the challenger if the target was not found
+            if (!found) {
+                char not_found_msg[64];
+                snprintf(not_found_msg, sizeof(not_found_msg), "User %s not found or not online.\n", target_username);
+                if (send(client->socket, not_found_msg, strlen(not_found_msg) + 1, 0) <= 0) {
+                    perror("Failed to notify challenger");
+                }
+            }
+            
+        } else if (choice == 4) {
             snprintf(response, sizeof(response), "Logging out...\n");
             send(client->socket, response, strlen(response), 0);
             printf("Client %s logged out.\n", client->username);
             remove_online_player(client->socket);
             ///update_client_status_in_file("client_status.log", client->username, 0);
             return NULL; // Break out of the loop and close connection
-        } else {
-            printf("Invalid choice received: %s\n", buffer); // Debugging line
-            snprintf(response, sizeof(response), "Invalid choice. Try again.\n");
-            send(client->socket, response, strlen(response), 0);
-        }
+        } 
     }
 }
 

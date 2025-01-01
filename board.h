@@ -4,6 +4,7 @@
 #include <wchar.h>
 #include <locale.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #define black_king   0x2654 // ♔
 #define black_queen  0x2655 // ♕
