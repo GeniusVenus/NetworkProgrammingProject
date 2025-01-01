@@ -48,7 +48,7 @@ void freeAll(int * piece_team, int * x_moves, int * y_moves) {
 
 bool is_syntax_valid(int player, char * move) {
   // Look for -
-  if (move[2] != '-') { send(player, "e-00", 4, 0); return false; }
+  if (strlen(move) != 6 || move[2] != '-') { send(player, "e-00", 4, 0); return false; }
 
   //First and 3th should be characters
   if (move[0]-'0' < 10) { send(player, "e-01", 4, 0); return false; }
@@ -620,9 +620,9 @@ bool checkmate(wchar_t **board, wchar_t piece) {
     return !can_king_escape(board, king_x, king_y, king_team);
 }
 
-void log_game_result(int player_one, int player_two, bool result){
+void log_game_result(int player_one, int player_two, bool result, elo_diff elo_points){
     const char* player_one_name = get_username_by_socket(player_one, clients);
-    const char* player_two_name = get_username_by_socket(player_two, clients);\
+    const char* player_two_name = get_username_by_socket(player_two, clients);
 
     char filename[128];
     create_result_filename(filename, sizeof(filename), player_one_name, player_two_name);
@@ -635,19 +635,22 @@ void log_game_result(int player_one, int player_two, bool result){
     fprintf(log_file, "Game result between %s and %s.\n", player_one_name, player_two_name);
     fflush(log_file);
     if(result){
-      fprintf(log_file, "%s win +%d\n", player_one_name, 0);
+      fprintf(log_file, "%s win +%d\n", player_one_name, elo_points.elo1);
       fflush(log_file);
 
-      fprintf(log_file, "%s lose -%d\n", player_two_name, 0);
+      fprintf(log_file, "%s lose %d\n", player_two_name, elo_points.elo2);
       fflush(log_file);
     } else {
-      fprintf(log_file, "%s win +%d\n", player_two_name, 0);
+      fprintf(log_file, "%s win +%d\n", player_two_name, elo_points.elo1);
       fflush(log_file);
 
-      fprintf(log_file, "%s lose -%d\n", player_one_name, 0);
+      fprintf(log_file, "%s lose %d\n", player_one_name, elo_points.elo2);
       fflush(log_file);
     }
     fclose(log_file);
+
+    update_user_elo(player_one_name, get_user_elo(player_one_name) + elo_points.elo1);
+    update_user_elo(player_two_name, get_user_elo(player_two_name) + elo_points.elo2);
 }
 
 bool check_win_game(wchar_t **board, int player_one, int player_two, int time) {
@@ -657,13 +660,13 @@ bool check_win_game(wchar_t **board, int player_one, int player_two, int time) {
     // If the black king is not alive or is checkmated, white wins
     if (!black_king_alive || (black_king_alive && checkmate(board, black_king))) {
         printf("We have white as the winner\n");
-        log_game_result(player_one, player_two, 1);
         send(player_one, "i-w", 4, 0);
         send(player_two, "i-l", 4, 0);
         // * calculate_elo(1, 2, time, 0)
         printf("TIME IS: %d\n", time);
         elo_diff result = calculate_elo(player_one, player_two, time, 0);
         printf("HERE is result of 1: %d and 2 when user 1 win: %d\n", result.elo1, result.elo2);
+        log_game_result(player_one, player_two, 1, result);
         reset_player_status(player_one, player_two);
         return true;
     }
@@ -671,13 +674,13 @@ bool check_win_game(wchar_t **board, int player_one, int player_two, int time) {
     // If the white king is not alive or is checkmated, black wins
     if (!white_king_alive || (white_king_alive && checkmate(board, white_king))) {
         printf("We have black as the winner\n");
-        log_game_result(player_one, player_two, 0);
         send(player_one, "i-l", 4, 0);
         send(player_two, "i-w", 4, 0);
         // * calculate_elo(1, 2, time, 1)
         printf("TIME IS: %d\n", time);
         elo_diff result = calculate_elo(player_one, player_two, time, 1);
         printf("HERE is result of 1: %d and 2 when user 2 win: %d\n", result.elo1, result.elo2);
+        log_game_result(player_one, player_two, 1, result);
         reset_player_status(player_one, player_two);
         return true;
     }
