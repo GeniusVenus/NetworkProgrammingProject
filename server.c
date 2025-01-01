@@ -39,32 +39,6 @@ bool emit(int client, char * message, int message_size) {
   return true;
 }
 
-
-char *invert_board(char *board, int size) {
-    // Allocate memory for the inverted board
-    char *inverted_board = (char *)malloc(size * sizeof(char));
-
-    // Invert the board by reversing the order of elements
-    for (int i = 0; i < 64; i++) {
-        inverted_board[i] = board[size - 1 - i];
-    }
-
-    return inverted_board;
-}
-
-// void broadcast(wchar_t ** board, char * one_dimension_board, int player_one, int player_two) {
-
-//   to_one_dimension_char(board, one_dimension_board);
-
-//   printf("\tSending board to %d and %d size(%lu)\n", player_one, player_two, sizeof(one_dimension_board));
-//   send(player_one, one_dimension_board, 64, 0);
-//   char *inverted_board = invert_board(one_dimension_board);
-//   send(player_two, inverted_board, 64, 0);
-//   printf("\tSent board...\n");
-// }
-
-
-
 void matchmaking(client_info *client) {
     if (client == NULL) {
         fprintf(stderr, "Error: client_info is NULL.\n");
@@ -322,71 +296,6 @@ void update_client_status_in_file(const char *filename, const char *username, in
 
     fclose(file);
 }
-
-// void *handle_client(void *arg) {
-//     client_info *client = (client_info *)arg;
-//     char buffer[1024], response[1024];
-//     int bytes_received;
-//     int elo = 1000; // Default Elo for new users
-
-//     // Authentication phase
-//     while (1) {
-//         bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
-//         if (bytes_received <= 0) {
-//             // client->is_online = 0;
-//             update_client_status_in_file("client_status.log", client->username, 0);
-//             printf("Client disconnected during authentication.\n");
-//             close(client->socket);
-//             return NULL;
-//         }
-
-//         buffer[bytes_received] = '\0';
-//         char *command = strtok(buffer, " ");
-//         char *username = strtok(NULL, " ");
-//         char *password = strtok(NULL, " ");
-
-//         if (strcmp(command, "REGISTER") == 0) {
-//             if (register_user(username, password)) {
-//                 int x = initialize_elo(username);
-//                 snprintf(response, sizeof(response), "Registration successful.\n");
-//                 strncpy(client->username, username, sizeof(client->username));
-//                 add_online_player(client->socket, username, elo, 1); // Add player with default Elo
-//                 update_client_status_in_file("client_status.log", username, 1);
-//                 send(client->socket, response, strlen(response), 0);
-//                 break;
-//             } else {
-//                 snprintf(response, sizeof(response), "Registration failed. Username exists.\n");
-//             }
-//         } else if (strcmp(command, "LOGIN") == 0) {
-//             if (validate_login(username, password)) {
-//                 elo = get_user_elo(username); // Fetch Elo from database or file
-//                 int x = initialize_elo(username);
-//                 snprintf(response, sizeof(response), "Login successful.\n");
-//                 strncpy(client->username, username, sizeof(client->username));
-//                 update_client_status_in_file("client_status.log", username, 1);
-//                 add_online_player(client->socket, username, elo, 1);
-//                 send(client->socket, response, strlen(response), 0);
-//                 break;
-//             } else {
-//                 snprintf(response, sizeof(response), "Login failed. Invalid credentials.\n");
-//             }
-//         } else {
-//             snprintf(response, sizeof(response), "Invalid command. Use REGISTER or LOGIN.\n");
-//         }
-//         send(client->socket, response, strlen(response), 0);
-//     }
-
-//     printf("Client %s authenticated with Elo %d.\n", client->username, elo);
-
-//     // Enter matchmaking
-//     matchmaking(client);
-
-//     // Cleanup when the client disconnects
-//     remove_online_player(client->socket);
-//     close(client->socket);
-
-//     return NULL;
-// }
 
 
 void *handle_client(void *arg) {

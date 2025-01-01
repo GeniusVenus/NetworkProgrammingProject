@@ -25,5 +25,7 @@ bool is_piece_on_board(wchar_t **board, wchar_t piece);
 bool checkmate(wchar_t **board, wchar_t piece);
 bool can_king_escape(wchar_t **board, int king_x, int king_y, int king_team);
 bool is_king_in_check(wchar_t **board, int king_x, int king_y, int king_team);
+void create_result_filename(char *filename, size_t size, const char *username1, const char *username2);
+void log_game_result(int player_one, int player_two, bool result);
 
 #endif

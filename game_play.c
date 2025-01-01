@@ -1,5 +1,20 @@
 #include "game_play.h"
 
+void create_result_filename(char *filename, size_t size, const char *username1, const char *username2) {
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+
+    // Format the filename as YYYYMMDD-HHMMSS-username1-username2.log
+    snprintf(filename, size, "results/%04d%02d%02d-%02d%02d%02d--%s-%s.log",
+             tm.tm_year + 1900,  // Year
+             tm.tm_mon + 1,      // Month (tm_mon is 0-based)
+             tm.tm_mday,         // Day
+             tm.tm_hour,         // Hour (24-hour format)
+             tm.tm_min,          // Minute
+             tm.tm_sec,          // Second
+             username1, username2);
+}
+
 void print_board(wchar_t **board){
   for (int i = 0; i < 8; i++) {
     for (int j = 0; j < 8; j++)
@@ -596,6 +611,36 @@ bool checkmate(wchar_t **board, wchar_t piece) {
     return !can_king_escape(board, king_x, king_y, king_team);
 }
 
+void log_game_result(int player_one, int player_two, bool result){
+    const char* player_one_name = get_username_by_socket(player_one, clients);
+    const char* player_two_name = get_username_by_socket(player_two, clients);\
+
+    char filename[128];
+    create_result_filename(filename, sizeof(filename), player_one_name, player_two_name);
+    FILE *log_file = fopen(filename, "w");
+    if (!log_file) {
+        perror("ERROR opening log file");
+        return;
+    }
+
+    fprintf(log_file, "Game result between %s and %s.\n", player_one_name, player_two_name);
+    fflush(log_file);
+    if(result){
+      fprintf(log_file, "%s win +%d\n", player_one_name, 0);
+      fflush(log_file);
+
+      fprintf(log_file, "%s lose -%d\n", player_two_name, 0);
+      fflush(log_file);
+    } else {
+      fprintf(log_file, "%s win +%d\n", player_two_name, 0);
+      fflush(log_file);
+
+      fprintf(log_file, "%s lose -%d\n", player_one_name, 0);
+      fflush(log_file);
+    }
+    fclose(log_file);
+}
+
 bool check_win_game(wchar_t **board, int player_one, int player_two) {
     bool black_king_alive = is_piece_on_board(board, black_king);
     bool white_king_alive = is_piece_on_board(board, white_king);
@@ -603,6 +648,7 @@ bool check_win_game(wchar_t **board, int player_one, int player_two) {
     // If the black king is not alive or is checkmated, white wins
     if (!black_king_alive || (black_king_alive && checkmate(board, black_king))) {
         printf("We have white as the winner\n");
+        log_game_result(player_one, player_two, 1);
         send(player_one, "i-w", 4, 0);
         send(player_two, "i-l", 4, 0);
         return true;
@@ -611,6 +657,7 @@ bool check_win_game(wchar_t **board, int player_one, int player_two) {
     // If the white king is not alive or is checkmated, black wins
     if (!white_king_alive || (white_king_alive && checkmate(board, white_king))) {
         printf("We have black as the winner\n");
+        log_game_result(player_one, player_two, 0);
         send(player_one, "i-l", 4, 0);
         send(player_two, "i-w", 4, 0);
         return true;
