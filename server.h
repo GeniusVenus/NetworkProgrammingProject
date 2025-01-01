@@ -40,6 +40,7 @@ typedef struct {
     int is_online;
     int played;
     int ready;
+    int opposite;
 } client_info;
 
 extern client_info clients[MAX_CLIENTS];

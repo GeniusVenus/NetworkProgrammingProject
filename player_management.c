@@ -93,7 +93,7 @@ int find_match(int socket, int player_elo) {
   int closest_socket = -1;
   int closest_elo_diff = 10000000;
   printf("1\n");
-  // pthread_mutex_lock(&general_mutex);
+//   pthread_mutex_lock(&general_mutex);
 
   // Debugging: log client information to ensure correctness
   // pthread_mutex_lock(&general_mutex);
@@ -106,19 +106,27 @@ int find_match(int socket, int player_elo) {
   pthread_mutex_unlock(&general_mutex);
 
   printf("2\n");
-
+//   pthread_mutex_lock(&general_mutex);
   for (int i = 0; i < 15; i++) {
       if (clients[i].socket != 0 && clients[i].is_waiting && clients[i].socket != socket && clients[i].ready == 1) {
           int elo_diff = abs(clients[i].elo - player_elo);
           if (elo_diff < closest_elo_diff && elo_diff <= 50) {
               closest_socket = clients[i].socket;
               closest_elo_diff = elo_diff;
+            //   clients[i].opposite = socket;
+            //   for (int j = 0; j < MAX_CLIENTS; ++ j) {
+            //     if (clients[i].socket == socket) {
+            //         clients[j].opposite == closest_socket
+            //     }
+            //   }
+              return closest_socket;
           }
       }
   }
+  pthread_mutex_unlock(&general_mutex);
   printf("3\n");
 
   // pthread_mutex_unlock(&general_mutex);
 
-  return closest_socket;
+  return closest_socket; 
 }
