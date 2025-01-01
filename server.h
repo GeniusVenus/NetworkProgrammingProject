@@ -52,5 +52,6 @@ void update_client_status_in_file(const char *filename, const char *username, in
 void *handle_client(void *arg);
 void game_room(int player_one_socket, int player_two_socket);
 void matchmaking(client_info *client);
+const char *get_username_by_socket(int socket, client_info *clients);
 
 #endif
