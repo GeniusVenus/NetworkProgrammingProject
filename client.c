@@ -395,8 +395,8 @@ void option_screen(int sockfd)
       case 2:
         snprintf(buffer, sizeof(buffer), "LIST_PLAYER_ONLINE");
         send(sockfd, buffer, strlen(buffer), 0);
-        navigate(BLANK_SCREEN);
-        break;
+        sleep(1);
+        return;
 
       case 3:
         navigate(CHALLENGE_SCREEN);
