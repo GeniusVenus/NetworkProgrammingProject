@@ -437,8 +437,6 @@ void *handle_client(void *arg)
                     send(client->socket, response, strlen(response), 0);
                 }
             }
-            else
-                send(client->socket, response, strlen(response), 0);
         }
 
         sleep(1);

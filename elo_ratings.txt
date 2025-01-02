@@ -1,5 +1,5 @@
-hello 1025
-happy 920
+hello 975
+happy 960
 he 1050
 haha 850
 wow 1000
