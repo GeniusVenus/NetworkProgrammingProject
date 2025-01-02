@@ -178,22 +178,26 @@ void *on_signal(void *sockfd)
         if (buffer[2] == 't')
         {
           printf("\nMake your move: \n");
+          fflush(stdout);
         }
         if (buffer[2] == 'n')
         {
           printf("\nWaiting for opponent...\n");
+          fflush(stdout);
         }
         if (buffer[2] == 'l')
         {
           is_ingame = 0;
           printf(RED "\nYou lose...\n" RESET);
           navigate(OPTION_SCREEN);
+          fflush(stdout);
         }
         if (buffer[2] == 'w')
         {
           is_ingame = 0;
           printf(GREEN "\nYou win...\n" RESET);
           navigate(OPTION_SCREEN);
+          fflush(stdout);
         }
         if (buffer[2] == 'd')
         {
@@ -207,6 +211,7 @@ void *on_signal(void *sockfd)
           printf("You're %s (%c)\n",
                  player == 2 ? "blacks" : "whites",
                  buffer[3]);
+          navigate(GAMEPLAY_SCREEN);
         }
       }
       // Error messages
@@ -383,6 +388,7 @@ void option_screen(int sockfd)
       case 1:
         snprintf(buffer, sizeof(buffer), "MATCH_MAKING");
         send(sockfd, buffer, strlen(buffer), 0);
+        printf("Enter matchmaking...\n");
         navigate(GAMEPLAY_SCREEN);
         return;
 
@@ -448,7 +454,7 @@ void challenge_screen(void *sockfd)
     navigate(CHALLENGE_WAITING_SCREEN);
   }
 
-  printf("Waiting for opponent to accept challenge...\n");
+  // printf("Waiting for opponent to accept challenge...\n");
   sleep(1);
 }
 
@@ -483,15 +489,40 @@ void challenge_request_screen(void *sockfd)
 
 void challenge_waiting_screen(void *sockfd)
 {
-  // printf("\n=== Waiting for Response ===\n");
-  // printf("Waiting for opponent to accept challenge...\n");
+  printf("\n=== Waiting for Response ===\n");
+  printf("Waiting for opponent to accept challenge...\n");
 
-  // sleep(1);
+  int timeout_counter = 0;
+  const int timeout_limit = 30; // Timeout limit in seconds
+
+  while (current_screen == CHALLENGE_WAITING_SCREEN)
+  {
+    sleep(1); // Wait for 1 second
+    timeout_counter++;
+
+    // Exit waiting screen after timeout limit
+    if (timeout_counter >= timeout_limit)
+    {
+      printf(RED "Challenge request timed out.\n" RESET);
+      navigate(OPTION_SCREEN);
+      break;
+    }
+
+    // Check if the screen has transitioned elsewhere
+    pthread_mutex_lock(&screen_mutex);
+    if (current_screen != CHALLENGE_WAITING_SCREEN)
+    {
+      pthread_mutex_unlock(&screen_mutex);
+      break;
+    }
+    pthread_mutex_unlock(&screen_mutex);
+  }
 }
 
 void blank_screen(void *sockfd)
 {
   // Empty implementation - placeholder for transitional state
+  sleep(1);
 }
 
 int main(int argc, char *argv[])
