@@ -6,38 +6,42 @@ pthread_mutex_t general_mutex;
 client_info clients[MAX_CLIENTS] = {0};
 
 // Function to create the log file name with full date
-void create_log_filename(char *filename, size_t size, const char *username1, const char *username2) {
+void create_log_filename(char *filename, size_t size, const char *username1, const char *username2)
+{
     time_t t = time(NULL);
     struct tm tm = *localtime(&t);
 
     // Format the filename as YYYYMMDD-username1-username2.log
     snprintf(filename, size, "logs/%04d%02d%02d-%02d%02d%02d--%s-%s.log",
-            tm.tm_year + 1900,  // Year
-            tm.tm_mon + 1,      // Month (tm_mon is 0-based)
-            tm.tm_mday,         // Day
-            tm.tm_hour,         // Hour (24-hour format)
-            tm.tm_min,          // Minute
-            tm.tm_sec,          // Second
-            username1, username2);
+             tm.tm_year + 1900, // Year
+             tm.tm_mon + 1,     // Month (tm_mon is 0-based)
+             tm.tm_mday,        // Day
+             tm.tm_hour,        // Hour (24-hour format)
+             tm.tm_min,         // Minute
+             tm.tm_sec,         // Second
+             username1, username2);
 }
 
-
-const char *get_username_by_socket(int socket, client_info *clients) {
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (clients[i].socket == socket) {
+const char *get_username_by_socket(int socket, client_info *clients)
+{
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (clients[i].socket == socket)
+        {
             return clients[i].username;
         }
     }
     return "unknown"; // Fallback if username not found
 }
 
-
 // Match player
 int challenging_player = 0;
 int player_is_waiting = 0;
 
-void matchmaking(client_info *client) {
-    if (client == NULL) {
+void matchmaking(client_info *client)
+{
+    if (client == NULL)
+    {
         fprintf(stderr, "Error: client_info is NULL.\n");
         return;
     }
@@ -45,17 +49,20 @@ void matchmaking(client_info *client) {
     printf("Client %s (Elo: %d) entering matchmaking...\n", client->username, client->elo);
     for (int i = 0; i < MAX_PLAYERS; i++)
     {
-        if (clients[i].socket == client->socket) {
-                clients[i].ready = 1;
-            }
+        if (clients[i].socket == client->socket)
+        {
+            clients[i].ready = 1;
+        }
     }
     // Step 1: Try to find a match
     int opponent_socket;
     pthread_mutex_lock(&general_mutex);
-    for (int j = 0; j < 5; ++j) {
+    for (int j = 0; j < 5; ++j)
+    {
         opponent_socket = find_match(client->socket, client->elo);
         printf("Opponent Socket: %d\n", opponent_socket);
-        if (opponent_socket != -1) {
+        if (opponent_socket != -1)
+        {
             printf("Match found! %s will play against opponent with socket %d.\n", client->username, opponent_socket);
             break;
         }
@@ -63,17 +70,21 @@ void matchmaking(client_info *client) {
     }
     pthread_mutex_unlock(&general_mutex);
 
-    if (opponent_socket != -1) {
+    if (opponent_socket != -1)
+    {
         int user1_elo = client->elo;
         int user2_elo;
-        for (int i = 0; i < MAX_PLAYERS; i++) {
-            if (clients[i].socket == opponent_socket) {
+        for (int i = 0; i < MAX_PLAYERS; i++)
+        {
+            if (clients[i].socket == opponent_socket)
+            {
                 user2_elo = get_user_elo(clients[i].username);
                 break;
             }
         }
-         if (user1_elo <= user2_elo) {
-             printf("Client %s is now Player Two.\n", client->username);
+        if (user1_elo <= user2_elo)
+        {
+            printf("Client %s is now Player Two.\n", client->username);
             int player_one_socket = challenging_player;
             int player_two_socket = client->socket;
 
@@ -88,7 +99,9 @@ void matchmaking(client_info *client) {
             // Start the game room with Player 1 and Player 2
             game_room(client->socket, opponent_socket);
             return;
-        } else {
+        }
+        else
+        {
             // Opposite assignment when user2_elo > user1_elo
             // printf("Client %s is Player Two.\n", client->username);
             // printf("Opponent %d is Player One.\n", opponent_socket);
@@ -110,7 +123,8 @@ void matchmaking(client_info *client) {
     printf("No match found. Client %s will wait.\n", client->username);
     pthread_mutex_lock(&general_mutex);
 
-    if (player_is_waiting == 0) {
+    if (player_is_waiting == 0)
+    {
         // Become Player One
         printf("Client %s is now Player One.\n", client->username);
         player_is_waiting = 1;
@@ -118,7 +132,9 @@ void matchmaking(client_info *client) {
 
         // Wait for another player
         pthread_cond_wait(&player_to_join, &general_mutex);
-    } else {
+    }
+    else
+    {
         // Become Player Two
         printf("Client %s is now Player Two.\n", client->username);
         int player_one_socket = challenging_player;
@@ -140,12 +156,12 @@ void matchmaking(client_info *client) {
     pthread_mutex_unlock(&general_mutex);
 }
 
-void game_room(int player_one_socket, int player_two_socket) {
+void game_room(int player_one_socket, int player_two_socket)
+{
     printf("Starting game between Player One (%d) and Player Two (%d).\n", player_one_socket, player_two_socket);
     // if (send(player_two_socket, "game_ready", strlen("game_ready") + 1, 0) < 0) {
     //     perror("ERROR sending game ready signal");
     // }
-
     time_t start_time = time(NULL);
     int *move = (int *)malloc(sizeof(int) * 4);
     char buffer[64];
@@ -153,11 +169,13 @@ void game_room(int player_one_socket, int player_two_socket) {
     char *one_dimension_board = create_od_board();
     initialize_board(board);
 
-    if (send(player_one_socket, "i-p1", 4, 0) < 0) {
-     perror("ERROR writing to socket");
-     exit(1);
+    if (send(player_one_socket, "i-p1", 4, 0) < 0)
+    {
+        perror("ERROR writing to socket");
+        exit(1);
     }
-    if (send(player_two_socket, "i-p2", 4, 0) < 0) {
+    if (send(player_two_socket, "i-p2", 4, 0) < 0)
+    {
         perror("ERROR writing to socket");
         exit(1);
     }
@@ -174,7 +192,8 @@ void game_room(int player_one_socket, int player_two_socket) {
     create_log_filename(log_filename, sizeof(log_filename), username1, username2);
 
     FILE *log_file = fopen(log_filename, "w");
-    if (!log_file) {
+    if (!log_file)
+    {
         perror("ERROR opening log file");
         return;
     }
@@ -187,8 +206,9 @@ void game_room(int player_one_socket, int player_two_socket) {
     bool syntax_valid = false;
     bool move_valid = false;
     print_board(board);
-
-    while (1) {
+    while (1)
+    {
+        memset(buffer, '\0', sizeof(buffer));
         // Player One's turn
         send(player_one_socket, "i-tm", 4, 0);
         send(player_two_socket, "i-nm", 4, 0);
@@ -206,9 +226,11 @@ void game_room(int player_one_socket, int player_two_socket) {
         printf("Total match time: %02d:%02d:%02d\n", hours, minutes, seconds);
         printf("Total match time: %.0f seconds\n", total_time);
 
-        while (!syntax_valid || !move_valid) {
+        while (!syntax_valid || !move_valid)
+        {
             // Check win/draw before reading new move
-            if (check_win_game(board, player_one_socket, player_two_socket, total_seconds)) {
+            if (check_win_game(board, player_one_socket, player_two_socket, total_seconds))
+            {
                 goto cleanup;
             }
             sleep(1);
@@ -220,7 +242,8 @@ void game_room(int player_one_socket, int player_two_socket) {
             bzero(buffer, 64);
 
             ssize_t bytes_read = read(player_one_socket, buffer, sizeof(buffer));
-            if (bytes_read <= 0) {
+            if (bytes_read <= 0)
+            {
                 perror("ERROR reading Player One move");
                 goto cleanup;
             }
@@ -244,7 +267,8 @@ void game_room(int player_one_socket, int player_two_socket) {
         sleep(1);
 
         printf("Waiting for move from Player Two (%d)...\n", player_two_socket);
-        while (!syntax_valid || !move_valid) {
+        while (!syntax_valid || !move_valid)
+        {
             time_t end_time = time(NULL);
             // Calculate total duration
             double total_time = difftime(end_time, start_time);
@@ -256,7 +280,8 @@ void game_room(int player_one_socket, int player_two_socket) {
             printf("Total match time: %.0f seconds\n", total_time);
 
             // Check win/draw before reading new move
-            if (check_win_game(board, player_one_socket, player_two_socket, total_seconds)) {
+            if (check_win_game(board, player_one_socket, player_two_socket, total_seconds))
+            {
                 goto cleanup;
             }
             sleep(1);
@@ -268,7 +293,8 @@ void game_room(int player_one_socket, int player_two_socket) {
             bzero(buffer, 64);
 
             ssize_t bytes_read = read(player_two_socket, buffer, sizeof(buffer));
-            if (bytes_read <= 0) {
+            if (bytes_read <= 0)
+            {
                 perror("ERROR reading Player Two move");
                 goto cleanup;
             }
@@ -280,7 +306,6 @@ void game_room(int player_one_socket, int player_two_socket) {
             translate_to_move(move, buffer);
             move_valid = is_move_valid(board, player_two_socket, -1, move);
         }
-
 
         syntax_valid = false;
         move_valid = false;
@@ -294,18 +319,22 @@ cleanup:
     free_board(board);
     free(one_dimension_board);
     free(move);
-    if (log_file) {
-        fclose(log_file);  // Close the file properly
+    if (log_file)
+    {
+        fclose(log_file); // Close the file properly
     }
 }
 
-void update_client_status_in_file(const char *filename, const char *username, int is_online) {
+void update_client_status_in_file(const char *filename, const char *username, int is_online)
+{
     FILE *file = fopen(filename, "r+");
 
     // If the file doesn't exist, create it
-    if (!file) {
+    if (!file)
+    {
         file = fopen(filename, "w+");
-        if (!file) {
+        if (!file)
+        {
             perror("ERROR opening or creating file");
             return;
         }
@@ -316,14 +345,17 @@ void update_client_status_in_file(const char *filename, const char *username, in
     int found = 0;
 
     // Read the file to find the username and update the status
-    while (fgets(line, sizeof(line), file)) {
+    while (fgets(line, sizeof(line), file))
+    {
         pos = ftell(file); // Save the current position
         char name[50];
         int status;
 
         // Parse username and status
-        if (sscanf(line, "%s %d", name, &status) == 2) {
-            if (strcmp(name, username) == 0) {
+        if (sscanf(line, "%s %d", name, &status) == 2)
+        {
+            if (strcmp(name, username) == 0)
+            {
                 // Match found, update the status
                 found = 1;
                 fseek(file, pos - strlen(line), SEEK_SET); // Go back to the start of the line
@@ -337,171 +369,236 @@ void update_client_status_in_file(const char *filename, const char *username, in
     fclose(file);
 }
 
-
-void *handle_client(void *arg) {
+void *handle_client(void *arg)
+{
     client_info *client = (client_info *)arg;
     char buffer[1024], response[1024];
     int bytes_received;
     int elo = 1000; // Default Elo for new users
 
-    while (1) {
-        bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
-        if (bytes_received <= 0) {
-            printf("HEEHEHEHHEHE: %s\n", client->username);
-            remove_online_player(client->socket);
-            printf("Client disconnected during authentication.\n");
-            close(client->socket);
-            return NULL;
-        }
-
-        buffer[bytes_received] = '\0';
-        char *command = strtok(buffer, " ");
-        char *username = strtok(NULL, " ");
-        char *password = strtok(NULL, " ");
-
-        if (strcmp(command, "REGISTER") == 0) {
-
-            if (register_user(username, password)) {
-                int x = initialize_elo(username);
-                snprintf(response, sizeof(response), "Registration successful.\n");
-                strncpy(client->username, username, sizeof(client->username));
-                add_online_player(client->socket, username, elo, 1);
-                // update_client_status_in_file("client_status.log", username, 1);
-                send(client->socket, response, strlen(response), 0);
-                break;
-            } else {
-                snprintf(response, sizeof(response), "Registration failed. Username exists.\n");
+    while (1)
+    {
+        while (1)
+        {
+            memset(buffer, 0, sizeof(buffer));
+            memset(response, 0, sizeof(buffer));
+            bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
+            if (bytes_received <= 0)
+            {
+                printf("HEEHEHEHHEHE: %s\n", client->username);
+                remove_online_player(client->socket);
+                printf("Client disconnected during authentication.\n");
+                close(client->socket);
+                return NULL;
             }
-        } else if (strcmp(command, "LOGIN") == 0) {
 
-            if (validate_login(username, password)) {
-                elo = get_user_elo(username);
-                int x = initialize_elo(username);
-                snprintf(response, sizeof(response), "Login successful.\n");
-                strncpy(client->username, username, sizeof(client->username));
-                // update_client_status_in_file("client_status.log", username, 1);
-                add_online_player(client->socket, username, elo, 1);
-                send(client->socket, response, strlen(response), 0);
-                break;
-            } else {
-                snprintf(response, sizeof(response), "Login failed. Invalid credentials.\n");
-            }
-        } else {
-            snprintf(response, sizeof(response), "Not a valid command. Use REGISTER or LOGIN.\n");
-        }
-        send(client->socket, response, strlen(response), 0);
-    }
-    sleep(1);
-    while (1) {
-        bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
-        if (bytes_received <= 0) {
-            update_client_status_in_file("client_status.log", client->username, 0);
-            printf("Client %d with name is %s disconnected.\n", client->socket, client->username);
-            close(client->socket);
-            return NULL;
-        }
-	printf("Buffer: %s\n", buffer);
+            buffer[bytes_received] = '\0';
+            char *command = strtok(buffer, " ");
+            char *username = strtok(NULL, " ");
+            char *password = strtok(NULL, " ");
 
-        buffer[bytes_received] = '\0';
-        int choice = atoi(buffer);
-	printf("Choice: %d, Buffer: %s\n", choice, buffer);
-        if (choice == 1) {
-            // Enter matchmaking
-            matchmaking(client);
-        }else if (choice == 2){
-            char online_clients[1024] = "";
-            pthread_mutex_lock(&general_mutex);
+            printf("HERE ? Buffer: %s %d\n", buffer, strcmp(buffer, "LOGIN"));
 
-            for (int i = 0; i < MAX_CLIENTS; i++) {
-                if (clients[i].is_online) {
-                    strcat(online_clients, clients[i].username);
-                    strcat(online_clients, "\n");
+            if (strcmp(command, "REGISTER") == 0)
+            {
+
+                if (register_user(username, password))
+                {
+                    int x = initialize_elo(username);
+                    snprintf(response, sizeof(response), "a-register-1");
+                    strncpy(client->username, username, sizeof(client->username));
+                    add_online_player(client->socket, username, elo, 1);
+                    // update_client_status_in_file("client_status.log", username, 1);
+                    send(client->socket, response, strlen(response), 0);
+                    break;
+                }
+                else
+                {
+                    snprintf(response, sizeof(response), "a-register-0");
+                    send(client->socket, response, strlen(response), 0);
                 }
             }
-	    printf("List: %s", online_clients);
-            pthread_mutex_unlock(&general_mutex);
-            
-            if (send(client->socket, online_clients, strlen(online_clients) + 1, 0) <= 0) {
-                perror("Failed to send online clients list");
+
+            if (strcmp(command, "LOGIN") == 0)
+            {
+                if (validate_login(username, password))
+                {
+                    elo = get_user_elo(username);
+                    int x = initialize_elo(username);
+                    snprintf(response, sizeof(response), "a-login-1");
+                    strncpy(client->username, username, sizeof(client->username));
+                    // update_client_status_in_file("client_status.log", username, 1);
+                    add_online_player(client->socket, username, elo, 1);
+                    send(client->socket, response, strlen(response), 0);
+                    break;
+                }
+                else
+                {
+                    snprintf(response, sizeof(response), "a-login-0");
+                    send(client->socket, response, strlen(response), 0);
+                }
             }
-        } else if(choice == 3){
-            char target_username[50];
-            int found = 0;
+            else
+                send(client->socket, response, strlen(response), 0);
+        }
 
-            // Receive the target username
-            if (recv(client->socket, target_username, sizeof(target_username), 0) <= 0) {
-                perror("Failed to receive target username");
-                break;
+        sleep(1);
+
+        while (1)
+        {
+            memset(buffer, 0, sizeof(buffer));
+            memset(response, 0, sizeof(buffer));
+            bytes_received = recv(client->socket, buffer, sizeof(buffer), 0);
+            if (bytes_received <= 0)
+            {
+                update_client_status_in_file("client_status.log", client->username, 0);
+                printf("Client %d with name is %s disconnected.\n", client->socket, client->username);
+                close(client->socket);
+                return NULL;
             }
-            printf("%s\n", target_username);
-            pthread_mutex_lock(&general_mutex);
+            printf("Buffer: %s\n", buffer);
 
-            for (int i = 0; i < MAX_CLIENTS; i++) {
-                if (clients[i].is_online && strcmp(clients[i].username, target_username) == 0) {
-                    // Notify the target client about the challenge
-                    char challenge_msg[256];
-                    snprintf(challenge_msg, sizeof(challenge_msg), "Challenge from %s. Accept? (y/n):", client->username);
-                    printf("%s\n", challenge_msg);
-                    if (send(clients[i].socket, challenge_msg, strlen(challenge_msg) + 1, 0) <= 0) {
-                        perror("Failed to send challenge notification");
-                    } else {
-                        // Wait for response
-                        char response;
-                        printf("What\n");
-                        if (recv(clients[i].socket, &response, sizeof(response), 0) > 0 && (response == 'y' || response == 'Y')) {
-                            // Notify both players of game start
-                            char game_start_msg[128];
-                            snprintf(game_start_msg, sizeof(game_start_msg), "Game starting with %s\n", target_username);
+            buffer[bytes_received] = '\0';
+            printf("HERE ? Buffer: %s\n", buffer);
+            if (strcmp(buffer, "MATCH_MAKING") == 0)
+            {
+                // Enter matchmaking
+                matchmaking(client);
+            }
 
-                            if (send(client->socket, game_start_msg, strlen(game_start_msg) + 1, 0) <= 0) {
-                                perror("Failed to notify challenger");
-                            }
-                            snprintf(game_start_msg, sizeof(game_start_msg), "Game starting with %s\n", client->username);
-                            if (send(clients[i].socket, game_start_msg, strlen(game_start_msg) + 1, 0) <= 0) {
-                                perror("Failed to notify target client");
-                            }
-                            game_room(clients[i].socket, client->socket);
-                        } else {
-                            // Notify challenger that the target declined
-                            char decline_msg[64];
-                            snprintf(decline_msg, sizeof(decline_msg), "%s declined your challenge.\n", target_username);
-                            if (send(client->socket, decline_msg, strlen(decline_msg) + 1, 0) <= 0) {
-                                perror("Failed to notify challenger of decline");
-                            }
-                        }
+            if (strcmp(buffer, "LIST_PLAYER_ONLINE") == 0)
+            {
+                char online_clients[1024] = "Online players: \n";
+                pthread_mutex_lock(&general_mutex);
+
+                for (int i = 0; i < MAX_CLIENTS; i++)
+                {
+                    if (clients[i].is_online)
+                    {
+                        strcat(online_clients, clients[i].username);
+                        strcat(online_clients, "\n");
                     }
-                    found = 1;
+                }
+                printf("List: %s", online_clients);
+                pthread_mutex_unlock(&general_mutex);
+
+                if (send(client->socket, online_clients, strlen(online_clients) + 1, 0) <= 0)
+                {
+                    perror("Failed to send online clients list");
                 }
             }
 
-            pthread_mutex_unlock(&general_mutex);
+            if (strcmp(buffer, "CHALLENGE_PLAYER") == 0)
+            {
+                char target_username[50];
+                int found = 0;
 
-            // Notify the challenger if the target was not found
-            if (!found) {
-                char not_found_msg[64];
-                snprintf(not_found_msg, sizeof(not_found_msg), "User %s not found or not online.\n", target_username);
-                if (send(client->socket, not_found_msg, strlen(not_found_msg) + 1, 0) <= 0) {
-                    perror("Failed to notify challenger");
+                // Receive the target username
+                if (recv(client->socket, target_username, sizeof(target_username), 0) <= 0)
+                {
+                    perror("Failed to receive target username");
+                    break;
+                }
+                printf("%s\n", target_username);
+                pthread_mutex_lock(&general_mutex);
+
+                for (int i = 0; i < MAX_CLIENTS; i++)
+                {
+                    if (clients[i].is_online && strcmp(clients[i].username, target_username) == 0)
+                    {
+                        // Notify the target client about the challenge
+                        char challenge_msg[256];
+                        snprintf(challenge_msg, sizeof(challenge_msg), "challenge-request-%s", client->username);
+                        printf("%s\n", challenge_msg);
+                        if (send(clients[i].socket, challenge_msg, strlen(challenge_msg), 0) <= 0)
+                        {
+                            perror("Failed to send challenge notification");
+                        }
+                        else
+                        {
+                            char success_notifcation[256];
+                            send(client->socket, sizeof(success_notifcation), "challenge-request-%d", 1);
+                        }
+                        found = 1;
+                    }
+                }
+
+                pthread_mutex_unlock(&general_mutex);
+
+                // Notify the challenger if the target was not found
+                if (!found)
+                {
+                    char not_found_msg[64];
+                    snprintf(not_found_msg, sizeof(not_found_msg), "challenge-request-%s", 0);
+                    if (send(client->socket, not_found_msg, strlen(not_found_msg) + 1, 0) <= 0)
+                    {
+                        perror("Failed to notify challenger");
+                    }
                 }
             }
-            
-        } else if (choice == 4) {
-            snprintf(response, sizeof(response), "Logging out...\n");
-            send(client->socket, response, strlen(response), 0);
-            printf("Client %s logged out.\n", client->username);
-            remove_online_player(client->socket);
-            ///update_client_status_in_file("client_status.log", client->username, 0);
-            return NULL; // Break out of the loop and close connection
-        } 
+
+            if (strstr(buffer, "ACCEPT_CHALLENGE") != NULL)
+            {
+                char *command = strtok(buffer, " ");
+                char *challenger = strtok(NULL, " ");
+                int challenger_socket = -1;
+                pthread_mutex_lock(&general_mutex);
+                for (int i = 0; i < MAX_CLIENTS; i++)
+                {
+                    if (strcmp(clients[i].username, challenger) == 0 && clients[i].is_online)
+                    {
+                        challenger_socket = clients[i].socket;
+                        break;
+                    }
+                }
+                pthread_mutex_unlock(&general_mutex);
+                game_room(client->socket, challenger_socket);
+            }
+
+            if (strstr(buffer, "DECLINE_CHALLENGE") != NULL)
+            {
+                char *command = strtok(buffer, " ");
+                char *challenger = strtok(NULL, " ");
+                int challenger_socket = -1;
+                pthread_mutex_lock(&general_mutex);
+                for (int i = 0; i < MAX_CLIENTS; i++)
+                {
+                    if (strcmp(clients[i].username, challenger) == 0 && clients[i].is_online)
+                    {
+                        challenger_socket = clients[i].socket;
+                        break;
+                    }
+                }
+                pthread_mutex_unlock(&general_mutex);
+                printf("GG GAME EZ \n");
+                // Notify challenger that the target declined
+                char decline_msg[64];
+                snprintf(decline_msg, sizeof(decline_msg), "challenge-response-0");
+                if (send(challenger_socket, decline_msg, strlen(decline_msg) + 1, 0) <= 0)
+                {
+                    perror("Failed to notify challenger of decline");
+                }
+            }
+
+            if (strcmp(buffer, "LOG_OUT") == 0)
+            {
+                snprintf(response, sizeof(response), "a-logout-1");
+                send(client->socket, response, strlen(response), 0);
+                printf("Client %s logged out.\n", client->username);
+                remove_online_player(client->socket);
+                break;
+            }
+        }
     }
+    return NULL;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     setlocale(LC_ALL, "en_US.UTF-8");
 
     int sockfd, client_socket, port_number, client_length;
     struct sockaddr_in server_address, client;
-
 
     pthread_t client_threads[MAX_CLIENTS];
     pthread_cond_init(&player_to_join, NULL);
@@ -509,7 +606,8 @@ int main(int argc, char *argv[]) {
 
     // Create socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
+    if (sockfd < 0)
+    {
         perror("ERROR opening socket");
         exit(1);
     }
@@ -522,7 +620,8 @@ int main(int argc, char *argv[]) {
     server_address.sin_port = htons(port_number);
 
     // Bind the socket
-    if (bind(sockfd, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
+    if (bind(sockfd, (struct sockaddr *)&server_address, sizeof(server_address)) < 0)
+    {
         perror("ERROR on binding");
         exit(1);
     }
@@ -531,12 +630,14 @@ int main(int argc, char *argv[]) {
     listen(sockfd, 20);
     printf("Server listening on port %d\n", port_number);
 
-    while (1) {
+    while (1)
+    {
         client_length = sizeof(client);
 
         // Accept a client connection
         client_socket = accept(sockfd, (struct sockaddr *)&client, (unsigned int *)&client_length);
-        if (client_socket < 0) {
+        if (client_socket < 0)
+        {
             perror("ERROR on accept");
             continue;
         }
@@ -548,11 +649,12 @@ int main(int argc, char *argv[]) {
                (client.sin_addr.s_addr & 0xFF000000) >> 24,
                ntohs(client.sin_port));
 
-
         // Create a thread to handle authentication
         pthread_mutex_lock(&general_mutex);
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (clients[i].socket == 0) {  // Ensure the client slot is correctly
+        for (int i = 0; i < MAX_CLIENTS; i++)
+        {
+            if (clients[i].socket == 0)
+            { // Ensure the client slot is correctly
                 clients[i].socket = client_socket;
                 clients[i].address = client;
                 clients[i].index = i;
