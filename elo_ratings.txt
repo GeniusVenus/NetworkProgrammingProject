@@ -2,3 +2,7 @@ hello 1025
 happy 920
 he 1050
 haha 850
+wow 1000
+j 1000
+h 1000
+ambored 1000

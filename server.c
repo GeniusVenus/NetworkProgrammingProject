@@ -410,7 +410,6 @@ void *handle_client(void *arg)
                     add_online_player(client->socket, username, elo, 1);
                     // update_client_status_in_file("client_status.log", username, 1);
                     send(client->socket, response, strlen(response), 0);
-                    break;
                 }
                 else
                 {

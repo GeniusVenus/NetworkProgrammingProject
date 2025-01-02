@@ -152,7 +152,7 @@ void *on_signal(void *sockfd)
         if (buffer[strlen(buffer) - 1] == '1')
         {
           printf(GREEN "Register successful\n" RESET);
-          navigate(OPTION_SCREEN);
+          navigate(AUTH_SCREEN);
         }
         else
         {
