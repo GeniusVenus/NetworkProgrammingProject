@@ -1,16 +1,19 @@
 #include "player_management.h"
 
-void add_online_player(int socket, const char *username, int elo, int is_waiting) {
+void add_online_player(int socket, const char *username, int elo, int is_waiting)
+{
     pthread_mutex_lock(&general_mutex);
 
     // Find an empty slot in the `clients` array
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (clients[i].socket != 0 && clients[i].socket == socket) { // Look for an empty slot
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (clients[i].socket != 0 && clients[i].socket == socket)
+        { // Look for an empty slot
             clients[i].socket = socket;
             strncpy(clients[i].username, username, sizeof(clients[i].username) - 1); // Copy the username
-            clients[i].elo = elo; // Set the Elo rating
-            clients[i].is_waiting = is_waiting; // Set whether the player is waiting for a match
-            clients[i].index = i; // Store the index in the array
+            clients[i].elo = elo;                                                    // Set the Elo rating
+            clients[i].is_waiting = is_waiting;                                      // Set whether the player is waiting for a match
+            clients[i].index = i;                                                    // Store the index in the array
             update_client_status_in_file("client_status.log", clients[i].username, 1);
             printf("New client %s (socket=%d, elo=%d) added to online list at position %d.\n",
                    username, socket, elo, i);
@@ -21,10 +24,9 @@ void add_online_player(int socket, const char *username, int elo, int is_waiting
     pthread_mutex_unlock(&general_mutex);
 }
 
-
 // void update_client_status_in_file(const char *filename, const char *username, int is_online) {
 //     FILE *file = fopen(filename, "r+");
-    
+
 //     // If the file doesn't exist, create it
 //     if (!file) {
 //         file = fopen(filename, "w+");
@@ -67,66 +69,25 @@ void add_online_player(int socket, const char *username, int elo, int is_waiting
 //     fclose(file);
 // }
 
-
-
 // Remove a player from the online list
-void remove_online_player(int socket) {
+void remove_online_player(int socket)
+{
     pthread_mutex_lock(&general_mutex);
-    for (int i = 0; i < MAX_PLAYERS; i++) {
-        if (clients[i].socket == socket) {
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        if (clients[i].socket == socket)
+        {
             update_client_status_in_file("client_status.log", clients[i].username, 0);
-            clients[i].socket = 0;
+            printf("Client (socket=%d) removed from online list.\n", socket);
             memset(clients[i].username, 0, sizeof(clients[i].username));
             clients[i].elo = 0;
             clients[i].is_waiting = 0;
             clients[i].address.sin_family = 0; // Reset the structure
-            clients[i].index = -1;  
-            clients[i].ready = 0;       
+            clients[i].index = -1;
+            clients[i].ready = 0;
             printf("Client (socket=%d) removed from online list.\n", socket);
             break;
         }
     }
     pthread_mutex_unlock(&general_mutex);
-}
-
-int find_match(int socket, int player_elo) {
-  int closest_socket = -1;
-  int closest_elo_diff = 10000000;
-  printf("1\n");
-//   pthread_mutex_lock(&general_mutex);
-
-  // Debugging: log client information to ensure correctness
-  // pthread_mutex_lock(&general_mutex);
-  for (int i = 0; i < 10; i++) {
-      if (clients[i].socket > 0) {
-          printf("Checking client[%d]: socket=%d, is_waiting=%d, elo=%d\n, ready=%d\n",
-                i, clients[i].socket, clients[i].is_waiting, clients[i].elo, clients[i].ready);
-      }
-  }
-  pthread_mutex_unlock(&general_mutex);
-
-  printf("2\n");
-//   pthread_mutex_lock(&general_mutex);
-  for (int i = 0; i < 15; i++) {
-      if (clients[i].socket != 0 && clients[i].is_waiting && clients[i].socket != socket && clients[i].ready == 1) {
-          int elo_diff = abs(clients[i].elo - player_elo);
-          if (elo_diff < closest_elo_diff && elo_diff <= 50) {
-              closest_socket = clients[i].socket;
-              closest_elo_diff = elo_diff;
-            //   clients[i].opposite = socket;
-            //   for (int j = 0; j < MAX_CLIENTS; ++ j) {
-            //     if (clients[i].socket == socket) {
-            //         clients[j].opposite == closest_socket
-            //     }
-            //   }
-              return closest_socket;
-          }
-      }
-  }
-  pthread_mutex_unlock(&general_mutex);
-  printf("3\n");
-
-  // pthread_mutex_unlock(&general_mutex);
-
-  return closest_socket; 
 }

@@ -1,4 +1,14 @@
-hello 1000
-happy 960
+hello 975
+happy 1015
 he 1050
 haha 850
+wow 1000
+j 1000
+h 1000
+ambored 1000
+x 970
+z 1030
+t 1000
+a 1000
+c 1000
+d 1000

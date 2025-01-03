@@ -26,7 +26,6 @@
 #define ACCOUNT_FILE "account.txt"
 #define MAX_PLAYERS 20
 
-extern pthread_cond_t player_to_join;
 extern pthread_mutex_t general_mutex;
 
 // Client information structure
@@ -54,5 +53,7 @@ void *handle_client(void *arg);
 void game_room(int player_one_socket, int player_two_socket);
 void matchmaking(client_info *client);
 const char *get_username_by_socket(int socket, client_info *clients);
+void add_to_list(client_info *client);
+client_info *find_and_remove_match(client_info *client);
 
 #endif
