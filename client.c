@@ -406,6 +406,7 @@ void option_screen(int sockfd)
       case 4:
         snprintf(buffer, sizeof(buffer), "LOG_OUT");
         send(sockfd, buffer, strlen(buffer), 0);
+        sleep(1);
         return;
 
       default:
