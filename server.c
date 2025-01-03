@@ -456,7 +456,6 @@ void *handle_client(void *arg)
 
             int chck = 0;
 
-            pthread_mutex_lock(&general_mutex);
             for (int j = 0; j < MAX_CLIENTS; ++j)
             {
                 if (strcmp(clients[j].username, username) == 0)
@@ -465,7 +464,6 @@ void *handle_client(void *arg)
                     continue;
                 }
             }
-            pthread_mutex_unlock(&general_mutex);
 
             if (strcmp(command, "LOGIN") == 0)
             {
