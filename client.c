@@ -117,19 +117,18 @@ void *on_signal(void *sockfd)
   char buffer[BUFFER_SIZE];
   int n;
   int socket = *(int *)sockfd;
-
   while (1)
   {
     bzero(buffer, BUFFER_SIZE);
     n = read(socket, buffer, BUFFER_SIZE);
-
+    // printf("Socket descriptor: %d\n", socket);
     if (n < 0)
     {
       perror("ERROR reading from socket");
       exit(1);
     }
 
-    printf("\nRECEIVE BUFFER: %s\n", buffer);
+    // printf("\nRECEIVE BUFFER: %s\n", buffer);
 
     // Authentication messages
     if (buffer[0] == 'a')
@@ -256,6 +255,7 @@ void *on_signal(void *sockfd)
       printf("%s\n", buffer);
       navigate(OPTION_SCREEN);
     }
+
     // Challenge related messages
     else if (strstr(buffer, "challenge") != NULL)
     {
@@ -395,6 +395,7 @@ void option_screen(int sockfd)
       case 2:
         snprintf(buffer, sizeof(buffer), "LIST_PLAYER_ONLINE");
         send(sockfd, buffer, strlen(buffer), 0);
+        // printf("HEY I TRY TO SEND BUFFER HERE: %s\n", buffer);
         sleep(1);
         return;
 
@@ -435,6 +436,8 @@ void gameplay_screen(void *sockfd)
       }
     }
   }
+
+  set_nonblock_input();
 }
 
 void challenge_screen(void *sockfd)

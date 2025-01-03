@@ -253,12 +253,27 @@ void game_room(int player_one_socket, int player_two_socket)
                 perror("ERROR reading Player One move");
                 goto cleanup;
             }
+
+            if (strcmp(buffer, "/ff") == 0)
+            {
+                printf("We have black as the winner\n");
+                send(player_one_socket, "i-l", 4, 0);
+                send(player_two_socket, "i-w", 4, 0);
+                // * calculate_elo(1, 2, time, 1)
+                printf("TIME IS: %d\n", time);
+                elo_diff result = calculate_elo(player_one_socket, player_two_socket, time, 1);
+                printf("HERE is result of 1: %d and 2 when user 2 win: %d\n", result.elo1, result.elo2);
+                log_game_result(player_one_socket, player_two_socket, 1, result);
+                reset_player_status(player_one_socket, player_two_socket);
+                goto cleanup;
+            }
             printf("Player One move: %s\n", buffer);
             syntax_valid = is_syntax_valid(player_one_socket, buffer);
             fprintf(log_file, "Player One move: %s\n", buffer);
             fflush(log_file);
             translate_to_move(move, buffer);
-            move_valid = is_move_valid(board, player_one_socket, 1, move);
+            if (syntax_valid)
+                move_valid = is_move_valid(board, player_one_socket, 1, move);
         }
 
         syntax_valid = false;
@@ -304,13 +319,28 @@ void game_room(int player_one_socket, int player_two_socket)
                 perror("ERROR reading Player Two move");
                 goto cleanup;
             }
+
+            if (strcmp(buffer, "/ff") == 0)
+            {
+                printf("We have white as the winner\n");
+                send(player_one_socket, "i-w", 4, 0);
+                send(player_two_socket, "i-l", 4, 0);
+                // * calculate_elo(1, 2, time, 0)
+                printf("TIME IS: %d\n", time);
+                elo_diff result = calculate_elo(player_one_socket, player_two_socket, time, 0);
+                printf("HERE is result of 1: %d and 2 when user 1 win: %d\n", result.elo1, result.elo2);
+                log_game_result(player_one_socket, player_two_socket, 1, result);
+                reset_player_status(player_one_socket, player_two_socket);
+                goto cleanup;
+            }
             printf("Player Two move: %s\n", buffer);
             fprintf(log_file, "Player Two move: %s\n", buffer);
             fflush(log_file);
             syntax_valid = is_syntax_valid(player_two_socket, buffer);
 
             translate_to_move(move, buffer);
-            move_valid = is_move_valid(board, player_two_socket, -1, move);
+            if (syntax_valid)
+                move_valid = is_move_valid(board, player_two_socket, -1, move);
         }
 
         syntax_valid = false;
@@ -424,9 +454,22 @@ void *handle_client(void *arg)
                 }
             }
 
+            int chck = 0;
+
+            pthread_mutex_lock(&general_mutex);
+            for (int j = 0; j < MAX_CLIENTS; ++j)
+            {
+                if (strcmp(clients[j].username, username) == 0)
+                {
+                    chck = 1;
+                    continue;
+                }
+            }
+            pthread_mutex_unlock(&general_mutex);
+
             if (strcmp(command, "LOGIN") == 0)
             {
-                if (validate_login(username, password))
+                if (validate_login(username, password) && chck == 0)
                 {
                     elo = get_user_elo(username);
                     int x = initialize_elo(username);
@@ -593,6 +636,7 @@ void *handle_client(void *arg)
             }
         }
     }
+    printf("THREAD DIED HERE\n");
     return NULL;
 }
 
@@ -661,7 +705,9 @@ int main(int argc, char *argv[])
                 clients[i].address = client;
                 clients[i].index = i;
                 clients[i].is_online = 1;
-                pthread_create(&client_threads[i], NULL, handle_client, &clients[i]);
+                client_info *client_data = malloc(sizeof(client_info));
+                *client_data = clients[i];
+                pthread_create(&client_threads[i], NULL, handle_client, client_data);
                 break;
             }
         }

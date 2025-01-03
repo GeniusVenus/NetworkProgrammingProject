@@ -1,10 +1,11 @@
-hello 925
-happy 1000
+hello 975
+happy 1015
 he 1050
 haha 850
 wow 1000
 j 1000
 h 1000
 ambored 1000
-x 1000
-z 1000
+x 970
+z 1030
+t 1000
