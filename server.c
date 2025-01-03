@@ -443,7 +443,6 @@ void *handle_client(void *arg)
                     int x = initialize_elo(username);
                     snprintf(response, sizeof(response), "a-register-1");
                     strncpy(client->username, username, sizeof(client->username));
-                    add_online_player(client->socket, username, elo, 1);
                     // update_client_status_in_file("client_status.log", username, 1);
                     send(client->socket, response, strlen(response), 0);
                 }
@@ -455,15 +454,16 @@ void *handle_client(void *arg)
             }
 
             int chck = 0;
-
+            pthread_mutex_lock(&general_mutex);
             for (int j = 0; j < MAX_CLIENTS; ++j)
             {
                 if (strcmp(clients[j].username, username) == 0)
                 {
                     chck = 1;
-                    continue;
+                    break;
                 }
             }
+            pthread_mutex_unlock(&general_mutex);
 
             if (strcmp(command, "LOGIN") == 0)
             {
